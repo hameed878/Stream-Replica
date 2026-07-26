@@ -230,10 +230,6 @@ const pcStyles = StyleSheet.create({
     fontWeight: '900',
     lineHeight: 44,
     letterSpacing: -2,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
-    // Outlined stroke effect
     includeFontPadding: false,
   },
 });
