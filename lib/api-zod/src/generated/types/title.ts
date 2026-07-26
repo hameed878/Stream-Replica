@@ -5,17 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-export interface HealthStatus {
-  status: string;
-}
-
-export type TitleMediaType = typeof TitleMediaType[keyof typeof TitleMediaType];
-
-
-export const TitleMediaType = {
-  movie: 'movie',
-  tv: 'tv',
-} as const;
+import type { TitleMediaType } from './titleMediaType';
 
 export interface Title {
   id: number;
@@ -35,15 +25,3 @@ export interface Title {
   seasons: number;
   imdbId: string;
 }
-
-export interface CatalogRail {
-  title: string;
-  items: Title[];
-}
-
-export interface CatalogHome {
-  featured: Title;
-  rails: CatalogRail[];
-  syncedAt: string;
-}
-

@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: catalog
+    description: Live TMDB catalog operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /catalog/home:
+    get:
+      operationId: getCatalogHome
+      tags: [catalog]
+      summary: Get popular and trending titles
+      responses:
+        "200":
+          description: Live catalog rails
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogHome"
+  /catalog/title/{id}:
+    get:
+      operationId: getCatalogTitle
+      tags: [catalog]
+      summary: Get title details, cast, artwork, and stills
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: type
+          required: false
+          schema:
+            type: string
+            enum: [movie, tv]
+        - in: query
+          name: type
+          required: false
+          schema:
+            type: string
+            enum: [movie, tv]
+      responses:
+        "200":
+          description: Title details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Title"
+        "404":
+          description: Title not found
 components:
   schemas:
     HealthStatus:
@@ -33,4 +79,90 @@ components:
           type: string
       required:
         - status
+    Title:
+      type: object
+      properties:
+        id:
+          type: integer
+        mediaType:
+          type: string
+          enum: [movie, tv]
+        title:
+          type: string
+        originalTitle:
+          type: string
+        overview:
+          type: string
+        releaseDate:
+          type: string
+        year:
+          type: string
+        genres:
+          type: array
+          items:
+            type: string
+        cast:
+          type: array
+          items:
+            type: string
+        posterUrl:
+          type: string
+        backdropUrl:
+          type: string
+        stillUrls:
+          type: array
+          items:
+            type: string
+        rating:
+          type: number
+        runtimeMinutes:
+          type: integer
+        seasons:
+          type: integer
+        imdbId:
+          type: string
+      required:
+        - id
+        - mediaType
+        - title
+        - originalTitle
+        - overview
+        - releaseDate
+        - year
+        - genres
+        - cast
+        - posterUrl
+        - backdropUrl
+        - stillUrls
+        - rating
+        - runtimeMinutes
+        - seasons
+        - imdbId
+    CatalogRail:
+      type: object
+      properties:
+        title:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Title"
+      required:
+        - title
+        - items
+    CatalogHome:
+      type: object
+      properties:
+        featured:
+          $ref: "#/components/schemas/Title"
+        rails:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogRail"
+        syncedAt:
+          type: string
+      required:
+        - featured
+        - rails
+        - syncedAt
 

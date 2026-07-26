@@ -5,7 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Title } from './title';
 
-export interface HealthStatus {
-  status: string;
+export interface CatalogRail {
+  title: string;
+  items: Title[];
 }

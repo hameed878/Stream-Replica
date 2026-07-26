@@ -1,0 +1,23 @@
+kind = "mobile"
+previewPath = "/"
+title = "StreamBox"
+version = "1.0.0"
+id = "artifacts/streambox"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/" ]
+localPort = 24877
+
+[services.development]
+run = "pnpm --filter @workspace/streambox run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/streambox", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/streambox", "run", "serve" ]
+
+[services.env]
+PORT = "24877"
+BASE_PATH = "/"
