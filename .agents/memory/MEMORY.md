@@ -1,0 +1,1 @@
+- [StreamBox setup](streambox-setup.md) — artifacts not registered after GitHub import; workflows configured manually via configureWorkflow.

@@ -34,7 +34,7 @@ export default function HomeScreen() {
             <IconButton label="My list" icon="bookmark" onPress={() => router.push('/my-list')} active={isSaved(featured.id)} />
           </View>
         </View>
-        <Pressable testID="featured-title" onPress={() => router.push(`/detail/${featured.id}`)} style={styles.hero}>
+        <Pressable testID="featured-title" onPress={() => router.push(`/detail/${featured.id}?type=${featured.mediaType}`)} style={styles.hero}>
           <Image source={artwork(featured.backdropUrl || featured.posterUrl, true)} style={styles.heroImage} />
           <LinearGradient colors={['transparent', 'rgba(9,10,14,0.32)', colors.background]} locations={[0.25, 0.55, 1]} style={StyleSheet.absoluteFill} />
           <View style={styles.heroCopy}>
@@ -52,7 +52,7 @@ export default function HomeScreen() {
             </View>
             <Text numberOfLines={2} style={[styles.heroOverview, { color: colors.mutedForeground }]}>{featured.overview}</Text>
             <View style={styles.heroButtons}>
-              <PlayButton onPress={() => router.push({ pathname: '/player', params: { id: String(featured.id) } })} />
+              <PlayButton onPress={() => router.push(`/player?id=${featured.id}&type=${featured.mediaType}&titleName=${encodeURIComponent(featured.title)}&backdropUrl=${encodeURIComponent(featured.backdropUrl)}`)} />
               <Pressable testID="save-featured" onPress={() => toggleSaved(featured)} style={[styles.saveButton, { borderColor: colors.border }]}>
                 <Feather name={isSaved(featured.id) ? 'check' : 'plus'} size={18} color={colors.foreground} />
                 <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 13 }}>{isSaved(featured.id) ? 'Saved' : 'My list'}</Text>

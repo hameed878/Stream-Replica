@@ -60,7 +60,7 @@ export function PosterCard({ title, width = 112 }: { title: Title; width?: numbe
   return (
     <Pressable
       testID={`poster-${title.id}`}
-      onPress={() => { triggerTap(); router.push(`/detail/${title.id}`); }}
+      onPress={() => { triggerTap(); router.push(`/detail/${title.id}?type=${title.mediaType}`); }}
       style={({ pressed }) => [styles.posterCard, { width }, pressed && styles.cardPressed]}
     >
       <Image source={artwork(title.posterUrl)} style={[styles.poster, { width, height: width * 1.46 }]} />

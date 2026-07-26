@@ -141,6 +141,27 @@ router.get("/catalog/home", async (_req, res) => {
   }
 });
 
+router.get("/catalog/search", async (req, res) => {
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  if (!q) return res.json([]);
+  const cacheKey = `search:${q.toLowerCase()}`;
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return res.json(cached.value);
+  try {
+    const response = await tmdb<{ results: (TmdbListItem & { media_type?: string })[] }>("/search/multi", { query: q });
+    const items = response.results
+      .filter((item) => (item.media_type === "movie" || item.media_type === "tv") && item.poster_path)
+      .slice(0, 20)
+      .map((item) => ({ ...item, media_type: item.media_type as MediaType }));
+    const value = await Promise.all(items.map(getDetails));
+    cache.set(cacheKey, { value, expiresAt: Date.now() + 5 * 60 * 1000 });
+    res.json(value);
+  } catch (error) {
+    req.log.error({ err: error }, "search failed");
+    res.status(502).json({ message: "Search is temporarily unavailable." });
+  }
+});
+
 router.get("/catalog/title/:id", async (req, res) => {
   const mediaType = req.query.type === "tv" ? "tv" : "movie";
   try {
