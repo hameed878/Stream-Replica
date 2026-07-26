@@ -1,4 +1,11 @@
 export * from "./generated/api";
-export * from "./generated/types";
-export * from './generated/api';
-export * from './generated/types';
+export type {
+  CatalogHome,
+  CatalogRail,
+  Episode,
+  HealthStatus,
+  Season,
+  Title,
+  TitleMediaType,
+} from "./generated/types";
+export { GetCatalogTitleType } from "./generated/types";

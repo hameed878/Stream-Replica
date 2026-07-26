@@ -2,9 +2,11 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 export default function GamesScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -12,15 +14,19 @@ export default function GamesScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Games</Text>
         <View style={styles.headerRight}>
-          <Pressable style={styles.iconBtn}>
+          <Pressable
+            accessibilityLabel="Cast to TV"
+            onPress={() => alert('Choose a nearby screen to cast this title.')}
+            style={styles.iconBtn}
+          >
             <Ionicons name="tv-outline" size={22} color="#fff" />
           </Pressable>
-          <Pressable style={styles.iconBtn}>
+          <Pressable onPress={() => router.push('/(tabs)/search')} style={styles.iconBtn}>
             <Ionicons name="search" size={22} color="#fff" />
           </Pressable>
-          <View style={styles.avatar}>
+          <Pressable onPress={() => router.push('/(tabs)/my-list')} style={styles.avatar}>
             <Ionicons name="person" size={16} color="#fff" />
-          </View>
+          </Pressable>
         </View>
       </View>
 

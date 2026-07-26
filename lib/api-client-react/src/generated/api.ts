@@ -17,6 +17,7 @@ import type {
 
 import type {
   CatalogHome,
+  GetCatalogTitleParams,
   HealthStatus,
   Title
 } from './api.schemas';
@@ -203,20 +204,29 @@ export function useGetCatalogHome<TData = Awaited<ReturnType<typeof getCatalogHo
 
 
 
-export const getGetCatalogTitleUrl = (id: number,) => {
+export const getGetCatalogTitleUrl = (id: number,
+    params?: GetCatalogTitleParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/catalog/title/${id}`
+  return stringifiedParams.length > 0 ? `/api/catalog/title/${id}?${stringifiedParams}` : `/api/catalog/title/${id}`
 }
 
 /**
  * @summary Get title details, cast, artwork, and stills
  */
-export const getCatalogTitle = async (id: number, options?: RequestInit): Promise<Title> => {
+export const getCatalogTitle = async (id: number,
+    params?: GetCatalogTitleParams, options?: RequestInit): Promise<Title> => {
 
-  return customFetch<Title>(getGetCatalogTitleUrl(id),
+  return customFetch<Title>(getGetCatalogTitleUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -229,23 +239,25 @@ export const getCatalogTitle = async (id: number, options?: RequestInit): Promis
 
 
 
-export const getGetCatalogTitleQueryKey = (id: number,) => {
+export const getGetCatalogTitleQueryKey = (id: number,
+    params?: GetCatalogTitleParams,) => {
     return [
-    `/api/catalog/title/${id}`
+    `/api/catalog/title/${id}`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetCatalogTitleQueryOptions = <TData = Awaited<ReturnType<typeof getCatalogTitle>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCatalogTitle>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetCatalogTitleQueryOptions = <TData = Awaited<ReturnType<typeof getCatalogTitle>>, TError = ErrorType<void>>(id: number,
+    params?: GetCatalogTitleParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCatalogTitle>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetCatalogTitleQueryKey(id);
+  const queryKey =  queryOptions?.queryKey ?? getGetCatalogTitleQueryKey(id,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCatalogTitle>>> = ({ signal }) => getCatalogTitle(id, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCatalogTitle>>> = ({ signal }) => getCatalogTitle(id,params, { signal, ...requestOptions });
 
 
 
@@ -263,11 +275,12 @@ export type GetCatalogTitleQueryError = ErrorType<void>
  */
 
 export function useGetCatalogTitle<TData = Awaited<ReturnType<typeof getCatalogTitle>>, TError = ErrorType<void>>(
- id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCatalogTitle>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ id: number,
+    params?: GetCatalogTitleParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCatalogTitle>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetCatalogTitleQueryOptions(id,options)
+  const queryOptions = getGetCatalogTitleQueryOptions(id,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

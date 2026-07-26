@@ -168,7 +168,7 @@ const fullBtnStyles = StyleSheet.create({
 /** Netflix-style filter chip (e.g. "Movies ▼", "All Categories ▼") */
 export function FilterChip({ label, onPress }: { label: string; onPress?: () => void }) {
   return (
-    <Pressable onPress={onPress} style={chipStyles.chip}>
+    <Pressable onPress={() => { triggerTap(); onPress?.(); }} style={chipStyles.chip}>
       <Text style={chipStyles.label}>{label}</Text>
       <Ionicons name="chevron-down" size={12} color="#fff" />
     </Pressable>

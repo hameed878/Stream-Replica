@@ -17,6 +17,25 @@ export const TitleMediaType = {
   tv: 'tv',
 } as const;
 
+export interface Episode {
+  episodeNumber: number;
+  title: string;
+  overview: string;
+  airDate: string;
+  runtimeMinutes: number;
+  stillUrl: string;
+}
+
+export interface Season {
+  seasonNumber: number;
+  name: string;
+  overview: string;
+  episodeCount: number;
+  airDate: string;
+  posterUrl: string;
+  episodes: Episode[];
+}
+
 export interface Title {
   id: number;
   mediaType: TitleMediaType;
@@ -33,6 +52,7 @@ export interface Title {
   rating: number;
   runtimeMinutes: number;
   seasons: number;
+  seasonsData: Season[];
   imdbId: string;
 }
 
@@ -46,4 +66,16 @@ export interface CatalogHome {
   rails: CatalogRail[];
   syncedAt: string;
 }
+
+export type GetCatalogTitleParams = {
+type?: GetCatalogTitleType;
+};
+
+export type GetCatalogTitleType = typeof GetCatalogTitleType[keyof typeof GetCatalogTitleType];
+
+
+export const GetCatalogTitleType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
 

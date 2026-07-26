@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Season } from './season';
 import type { TitleMediaType } from './titleMediaType';
 
 export interface Title {
@@ -23,5 +24,6 @@ export interface Title {
   rating: number;
   runtimeMinutes: number;
   seasons: number;
+  seasonsData: Season[];
   imdbId: string;
 }

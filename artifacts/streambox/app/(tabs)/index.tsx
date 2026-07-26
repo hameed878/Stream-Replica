@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   Image,
   Pressable,
@@ -33,6 +34,25 @@ export default function HomeScreen() {
   const { isSaved, toggleSaved } = useMyList();
   const query = useGetCatalogHome();
   const featured = query.data?.featured;
+  const [mediaFilter, setMediaFilter] = useState<'all' | 'movie' | 'tv'>('all');
+  const [category, setCategory] = useState('All Categories');
+  const categories = ['All Categories', 'Action', 'Drama', 'Comedy', 'Documentary'];
+  const visibleRails = useMemo(
+    () =>
+      (query.data?.rails ?? [])
+        .map((rail) => ({
+          ...rail,
+          items: rail.items.filter((item) => {
+            const matchesMedia = mediaFilter === 'all' || item.mediaType === mediaFilter;
+            const matchesCategory =
+              category === 'All Categories' ||
+              item.genres.some((genre) => genre.toLowerCase() === category.toLowerCase());
+            return matchesMedia && matchesCategory;
+          }),
+        }))
+        .filter((rail) => rail.items.length > 0),
+    [category, mediaFilter, query.data?.rails],
+  );
 
   if (query.isLoading) {
     return (
@@ -51,7 +71,6 @@ export default function HomeScreen() {
   }
 
   const genres = (featured as any).genres as string[] | undefined;
-
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -95,13 +114,14 @@ export default function HomeScreen() {
           {/* ── Header overlaid on hero ── */}
           <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
             <View style={styles.headerLeft}>
-              <Pressable onPress={() => router.back()} style={styles.headerIconBtn}>
-                <Ionicons name="arrow-back" size={24} color="#fff" />
-              </Pressable>
               <Text style={styles.headerTitle}>Movies</Text>
             </View>
             <View style={styles.headerRight}>
-              <Pressable style={styles.headerIconBtn}>
+              <Pressable
+                accessibilityLabel="Cast to TV"
+                onPress={() => Alert.alert('Cast to TV', 'Choose a nearby screen to cast this title.')}
+                style={styles.headerIconBtn}
+              >
                 <Ionicons name="tv-outline" size={22} color="#fff" />
               </Pressable>
               <Pressable
@@ -110,16 +130,31 @@ export default function HomeScreen() {
               >
                 <Ionicons name="search" size={22} color="#fff" />
               </Pressable>
-              <View style={styles.avatar}>
+              <Pressable
+                accessibilityLabel="Open My List"
+                onPress={() => router.push('/(tabs)/my-list')}
+                style={styles.avatar}
+              >
                 <Ionicons name="person" size={16} color="#fff" />
-              </View>
+              </Pressable>
             </View>
           </View>
 
           {/* ── Filter chips ── */}
           <View style={[styles.chips, { top: insets.top + 52 }]}>
-            <FilterChip label="Movies" />
-            <FilterChip label="All Categories" />
+            <FilterChip
+              label={mediaFilter === 'all' ? 'Movies & Shows' : mediaFilter === 'movie' ? 'Movies' : 'Series'}
+              onPress={() =>
+                setMediaFilter((value) => (value === 'all' ? 'movie' : value === 'movie' ? 'tv' : 'all'))
+              }
+            />
+            <FilterChip
+              label={category}
+              onPress={() => {
+                const nextIndex = (categories.indexOf(category) + 1) % categories.length;
+                setCategory(categories[nextIndex]);
+              }}
+            />
           </View>
 
           {/* ── Hero bottom content ── */}
@@ -171,7 +206,7 @@ export default function HomeScreen() {
         </Pressable>
 
         {/* ──────────── RAILS ──────────── */}
-        {query.data.rails.map((rail: { title: string; items: any[] }, i: number) => (
+        {visibleRails.map((rail: { title: string; items: any[] }, i: number) => (
           <Rail
             key={rail.title}
             title={i === 0 ? 'Popular on Netflix' : rail.title}

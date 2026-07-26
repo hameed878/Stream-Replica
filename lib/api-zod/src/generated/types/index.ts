@@ -8,6 +8,10 @@
 
 export * from './catalogHome';
 export * from './catalogRail';
+export * from './episode';
+export * from './getCatalogTitleParams';
+export * from './getCatalogTitleType';
 export * from './healthStatus';
+export * from './season';
 export * from './title';
 export * from './titleMediaType';

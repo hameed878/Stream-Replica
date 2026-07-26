@@ -12,12 +12,14 @@ import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { customFetch, type Title } from '@workspace/api-client-react';
+import { useRouter } from 'expo-router';
 import { EmptyState, PosterCard } from '@/components/StreamBox';
 
 const CARD_WIDTH = 108;
 
 export default function NewHotScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const inputRef = useRef<TextInput>(null);
@@ -46,12 +48,16 @@ export default function NewHotScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>New & Hot</Text>
         <View style={styles.headerRight}>
-          <Pressable style={styles.iconBtn}>
+          <Pressable
+            accessibilityLabel="Cast to TV"
+            onPress={() => alert('Choose a nearby screen to cast this title.')}
+            style={styles.iconBtn}
+          >
             <Ionicons name="tv-outline" size={22} color="#fff" />
           </Pressable>
-          <View style={styles.avatar}>
+          <Pressable onPress={() => router.push('/(tabs)/my-list')} style={styles.avatar}>
             <Ionicons name="person" size={16} color="#fff" />
-          </View>
+          </Pressable>
         </View>
       </View>
 

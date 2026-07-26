@@ -4,12 +4,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { Title } from '@workspace/api-client-react';
 import { useMyList } from '@/hooks/useMyList';
+import { useRouter } from 'expo-router';
 import { EmptyState, PosterCard } from '@/components/StreamBox';
 
 const CARD_WIDTH = 108;
 
 export default function DownloadsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { savedTitles, hydrated } = useMyList();
 
   return (
@@ -18,12 +20,16 @@ export default function DownloadsScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Downloads</Text>
         <View style={styles.headerRight}>
-          <Pressable style={styles.iconBtn}>
+          <Pressable
+            accessibilityLabel="Cast to TV"
+            onPress={() => alert('Choose a nearby screen to cast this title.')}
+            style={styles.iconBtn}
+          >
             <Ionicons name="tv-outline" size={22} color="#fff" />
           </Pressable>
-          <View style={styles.avatar}>
+          <Pressable onPress={() => router.push('/(tabs)/my-list')} style={styles.avatar}>
             <Ionicons name="person" size={16} color="#fff" />
-          </View>
+          </Pressable>
         </View>
       </View>
 

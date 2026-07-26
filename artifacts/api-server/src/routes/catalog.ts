@@ -23,7 +23,33 @@ type TmdbDetails = TmdbListItem & {
   images?: { stills?: Array<{ file_path?: string | null }> };
   runtime?: number | null;
   number_of_seasons?: number;
+  seasons?: Array<{
+    id: number;
+    name?: string;
+    overview?: string;
+    season_number: number;
+    episode_count?: number;
+    air_date?: string | null;
+    poster_path?: string | null;
+  }>;
   external_ids?: { imdb_id?: string | null };
+};
+
+type TmdbSeason = {
+  season_number: number;
+  name?: string;
+  overview?: string;
+  episode_count?: number;
+  air_date?: string | null;
+  poster_path?: string | null;
+  episodes?: Array<{
+    episode_number: number;
+    name?: string;
+    overview?: string;
+    air_date?: string | null;
+    runtime?: number | null;
+    still_path?: string | null;
+  }>;
 };
 
 const router: IRouter = Router();
@@ -51,7 +77,11 @@ function image(path: string | null | undefined, size: string): string {
   return path ? `${IMAGE_BASE}/${size}${path}` : "";
 }
 
-function normalize(item: TmdbListItem & { media_type?: MediaType }, details?: TmdbDetails) {
+function normalize(
+  item: TmdbListItem & { media_type?: MediaType },
+  details?: TmdbDetails,
+  seasonDetails: TmdbSeason[] = [],
+) {
   const mediaType = details?.media_type ?? item.media_type ?? "movie";
   const title = details?.title ?? details?.name ?? item.title ?? item.name ?? "Untitled";
   const originalTitle =
@@ -81,17 +111,44 @@ function normalize(item: TmdbListItem & { media_type?: MediaType }, details?: Tm
     rating: Number((details?.vote_average ?? item.vote_average ?? 0).toFixed(1)),
     runtimeMinutes: details?.runtime ?? 0,
     seasons: details?.number_of_seasons ?? 0,
+    seasonsData: seasonDetails.map((season) => ({
+      seasonNumber: season.season_number,
+      name: season.name ?? `Season ${season.season_number}`,
+      overview: season.overview ?? "",
+      episodeCount: season.episode_count ?? season.episodes?.length ?? 0,
+      airDate: season.air_date ?? "",
+      posterUrl: image(season.poster_path, "w300"),
+      episodes: (season.episodes ?? []).map((episode) => ({
+        episodeNumber: episode.episode_number,
+        title: episode.name ?? `Episode ${episode.episode_number}`,
+        overview: episode.overview ?? "",
+        airDate: episode.air_date ?? "",
+        runtimeMinutes: episode.runtime ?? 0,
+        stillUrl: image(episode.still_path, "w780"),
+      })),
+    })),
     imdbId: details?.external_ids?.imdb_id ?? "",
   };
 }
 
-async function getDetails(item: TmdbListItem) {
+async function getDetails(item: TmdbListItem, includeEpisodes = false) {
   const mediaType = item.media_type ?? "movie";
   const details = await tmdb<TmdbDetails>(`/${mediaType}/${item.id}`, {
     append_to_response: "credits,images,external_ids",
     include_image_language: "en,null",
   });
-  return normalize({ ...item, media_type: mediaType }, details);
+  const seasonDetails = includeEpisodes && mediaType === "tv"
+    ? await Promise.all(
+        (details.seasons ?? [])
+          .filter((season) => season.season_number > 0)
+          .map((season) =>
+            tmdb<TmdbSeason>(`/tv/${item.id}/season/${season.season_number}`, {
+              append_to_response: "images",
+            }),
+          ),
+      )
+    : [];
+  return normalize({ ...item, media_type: mediaType }, details, seasonDetails);
 }
 
 async function getRail(path: string, mediaType: MediaType, railSize = 8) {
@@ -100,7 +157,7 @@ async function getRail(path: string, mediaType: MediaType, railSize = 8) {
     .filter((item) => item.poster_path && item.backdrop_path)
     .slice(0, railSize)
     .map((item) => ({ ...item, media_type: mediaType }));
-  return Promise.all(items.map(getDetails));
+  return Promise.all(items.map((item) => getDetails(item)));
 }
 
 router.get("/catalog/home", async (_req, res) => {
@@ -113,11 +170,14 @@ router.get("/catalog/home", async (_req, res) => {
       getRail("/tv/popular", "tv"),
       getRail("/movie/now_playing", "movie"),
     ]);
-    const featuredItem = trending.results.find((item) => item.backdrop_path && item.poster_path) ?? popularMovies[0];
-    const featured = await getDetails({
-      ...featuredItem,
-      media_type: featuredItem.media_type ?? "movie",
-    });
+    const featuredItem = trending.results.find((item) => item.backdrop_path && item.poster_path);
+    const featured = featuredItem
+      ? await getDetails({
+          ...featuredItem,
+          media_type: featuredItem.media_type ?? "movie",
+        })
+      : popularMovies[0];
+    if (!featured) throw new Error("Catalog returned no featured title.");
     const value = {
       featured,
       rails: [
@@ -134,10 +194,10 @@ router.get("/catalog/home", async (_req, res) => {
       syncedAt: new Date().toISOString(),
     };
     cache.set("home", { value, expiresAt: Date.now() + 15 * 60 * 1000 });
-    res.json(value);
+    return res.json(value);
   } catch (error) {
     _req.log.error({ err: error }, "catalog sync failed");
-    res.status(502).json({ message: "Catalog sync is temporarily unavailable." });
+    return res.status(502).json({ message: "Catalog sync is temporarily unavailable." });
   }
 });
 
@@ -153,12 +213,12 @@ router.get("/catalog/search", async (req, res) => {
       .filter((item) => (item.media_type === "movie" || item.media_type === "tv") && item.poster_path)
       .slice(0, 20)
       .map((item) => ({ ...item, media_type: item.media_type as MediaType }));
-    const value = await Promise.all(items.map(getDetails));
+    const value = await Promise.all(items.map((item) => getDetails(item)));
     cache.set(cacheKey, { value, expiresAt: Date.now() + 5 * 60 * 1000 });
-    res.json(value);
+    return res.json(value);
   } catch (error) {
     req.log.error({ err: error }, "search failed");
-    res.status(502).json({ message: "Search is temporarily unavailable." });
+    return res.status(502).json({ message: "Search is temporarily unavailable." });
   }
 });
 
@@ -169,10 +229,10 @@ router.get("/catalog/title/:id", async (req, res) => {
       append_to_response: "credits,images,external_ids",
       include_image_language: "en,null",
     });
-    res.json(normalize({ ...details, media_type: mediaType }, details));
+    return res.json(await getDetails({ ...details, media_type: mediaType }, true));
   } catch (error) {
     req.log.error({ err: error }, "title lookup failed");
-    res.status(404).json({ message: "Title not found." });
+    return res.status(404).json({ message: "Title not found." });
   }
 });
 

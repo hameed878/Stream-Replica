@@ -37,6 +37,22 @@ export const GetCatalogHomeResponse = zod.object({
   "rating": zod.number(),
   "runtimeMinutes": zod.number(),
   "seasons": zod.number(),
+  "seasonsData": zod.array(zod.object({
+  "seasonNumber": zod.number(),
+  "name": zod.string(),
+  "overview": zod.string(),
+  "episodeCount": zod.number(),
+  "airDate": zod.string(),
+  "posterUrl": zod.string(),
+  "episodes": zod.array(zod.object({
+  "episodeNumber": zod.number(),
+  "title": zod.string(),
+  "overview": zod.string(),
+  "airDate": zod.string(),
+  "runtimeMinutes": zod.number(),
+  "stillUrl": zod.string()
+}))
+})),
   "imdbId": zod.string()
 }),
   "rails": zod.array(zod.object({
@@ -57,6 +73,22 @@ export const GetCatalogHomeResponse = zod.object({
   "rating": zod.number(),
   "runtimeMinutes": zod.number(),
   "seasons": zod.number(),
+  "seasonsData": zod.array(zod.object({
+  "seasonNumber": zod.number(),
+  "name": zod.string(),
+  "overview": zod.string(),
+  "episodeCount": zod.number(),
+  "airDate": zod.string(),
+  "posterUrl": zod.string(),
+  "episodes": zod.array(zod.object({
+  "episodeNumber": zod.number(),
+  "title": zod.string(),
+  "overview": zod.string(),
+  "airDate": zod.string(),
+  "runtimeMinutes": zod.number(),
+  "stillUrl": zod.string()
+}))
+})),
   "imdbId": zod.string()
 }))
 })),
@@ -69,6 +101,10 @@ export const GetCatalogHomeResponse = zod.object({
  */
 export const GetCatalogTitleParams = zod.object({
   "id": zod.coerce.number()
+})
+
+export const GetCatalogTitleQueryParams = zod.object({
+  "type": zod.enum(['movie', 'tv']).optional()
 })
 
 export const GetCatalogTitleResponse = zod.object({
@@ -87,6 +123,22 @@ export const GetCatalogTitleResponse = zod.object({
   "rating": zod.number(),
   "runtimeMinutes": zod.number(),
   "seasons": zod.number(),
+  "seasonsData": zod.array(zod.object({
+  "seasonNumber": zod.number(),
+  "name": zod.string(),
+  "overview": zod.string(),
+  "episodeCount": zod.number(),
+  "airDate": zod.string(),
+  "posterUrl": zod.string(),
+  "episodes": zod.array(zod.object({
+  "episodeNumber": zod.number(),
+  "title": zod.string(),
+  "overview": zod.string(),
+  "airDate": zod.string(),
+  "runtimeMinutes": zod.number(),
+  "stillUrl": zod.string()
+}))
+})),
   "imdbId": zod.string()
 })
 

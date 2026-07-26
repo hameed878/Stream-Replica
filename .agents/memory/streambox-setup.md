@@ -14,6 +14,14 @@ description: How the project was set up after GitHub import and what screens exi
 
 **How to apply:** If workflows disappear or need to be recreated, use `configureWorkflow` with the commands above.
 
+## Preview registration
+
+The imported mobile artifact can run successfully through its configured Expo workflow even when `listArtifacts()` returns an empty list. In that state, the app is available through the Replit/Expo preview and QR flow, but automated artifact screenshot lookup may report the artifact as missing.
+
+**Why:** GitHub imports may leave artifact metadata on disk without registering it with the platform artifact index.
+
+**How to apply:** Verify the workflow logs and use the Replit preview/Expo QR flow; do not keep recreating the artifact directory or replacing the managed mobile workflow.
+
 ## customFetch export
 
 Added `customFetch` to `lib/api-client-react/src/index.ts` exports so screens can make custom API calls (e.g. with `?type=tv` query param) without duplicating base URL logic.

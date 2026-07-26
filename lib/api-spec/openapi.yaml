@@ -55,12 +55,6 @@ paths:
           schema:
             type: string
             enum: [movie, tv]
-        - in: query
-          name: type
-          required: false
-          schema:
-            type: string
-            enum: [movie, tv]
       responses:
         "200":
           description: Title details
@@ -119,6 +113,10 @@ components:
           type: integer
         seasons:
           type: integer
+        seasonsData:
+          type: array
+          items:
+            $ref: "#/components/schemas/Season"
         imdbId:
           type: string
       required:
@@ -137,7 +135,57 @@ components:
         - rating
         - runtimeMinutes
         - seasons
+        - seasonsData
         - imdbId
+    Episode:
+      type: object
+      properties:
+        episodeNumber:
+          type: integer
+        title:
+          type: string
+        overview:
+          type: string
+        airDate:
+          type: string
+        runtimeMinutes:
+          type: integer
+        stillUrl:
+          type: string
+      required:
+        - episodeNumber
+        - title
+        - overview
+        - airDate
+        - runtimeMinutes
+        - stillUrl
+    Season:
+      type: object
+      properties:
+        seasonNumber:
+          type: integer
+        name:
+          type: string
+        overview:
+          type: string
+        episodeCount:
+          type: integer
+        airDate:
+          type: string
+        posterUrl:
+          type: string
+        episodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Episode"
+      required:
+        - seasonNumber
+        - name
+        - overview
+        - episodeCount
+        - airDate
+        - posterUrl
+        - episodes
     CatalogRail:
       type: object
       properties:

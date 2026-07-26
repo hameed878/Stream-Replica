@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -35,6 +36,7 @@ export default function DetailScreen() {
   const insets = useSafeAreaInsets();
   const { isSaved, toggleSaved } = useMyList();
   const [expanded, setExpanded] = useState(false);
+  const [selectedSeason, setSelectedSeason] = useState(0);
 
   const numId = Number(id);
   const mediaType = type === 'tv' ? 'tv' : 'movie';
@@ -90,7 +92,16 @@ export default function DetailScreen() {
             <View style={styles.previewOverlay} />
             {/* Play icon */}
             <View style={styles.previewPlayBtn}>
-              <Ionicons name="play-circle" size={56} color="rgba(255,255,255,0.9)" />
+              <Pressable
+                accessibilityLabel="Play preview"
+                onPress={() =>
+                  router.push(
+                    `/player?id=${title.id}&type=${title.mediaType}&titleName=${encodeURIComponent(title.title)}&backdropUrl=${encodeURIComponent(title.backdropUrl || '')}`,
+                  )
+                }
+              >
+                <Ionicons name="play-circle" size={56} color="rgba(255,255,255,0.9)" />
+              </Pressable>
             </View>
             {/* "Preview" label */}
             <View style={styles.previewLabel}>
@@ -102,7 +113,11 @@ export default function DetailScreen() {
                 <Ionicons name="arrow-back" size={24} color="#fff" />
               </Pressable>
               <View style={styles.topBarRight}>
-                <Pressable style={styles.iconBtn}>
+                <Pressable
+                  accessibilityLabel="Cast to TV"
+                  onPress={() => Alert.alert('Cast to TV', 'Choose a nearby screen to cast this title.')}
+                  style={styles.iconBtn}
+                >
                   <Ionicons name="tv-outline" size={22} color="#fff" />
                 </Pressable>
                 <Pressable
@@ -111,9 +126,13 @@ export default function DetailScreen() {
                 >
                   <Ionicons name="search" size={22} color="#fff" />
                 </Pressable>
-                <View style={styles.avatar}>
+                <Pressable
+                  accessibilityLabel="Open My List"
+                  onPress={() => router.push('/(tabs)/my-list')}
+                  style={styles.avatar}
+                >
                   <Ionicons name="person" size={14} color="#fff" />
-                </View>
+                </Pressable>
               </View>
             </View>
           </View>
@@ -158,6 +177,7 @@ export default function DetailScreen() {
             />
             <DownloadButton
               label={title.mediaType === 'tv' ? 'Download S1:E1' : 'Download'}
+              onPress={() => Alert.alert('Download queued', `${title.title} is ready to download when offline mode is connected.`)}
             />
 
             {/* Overview */}
@@ -204,17 +224,75 @@ export default function DetailScreen() {
               <VerticalAction
                 icon={<Ionicons name="thumbs-up-outline" size={26} color="#fff" />}
                 label="Rate"
+                onPress={() => Alert.alert('Rate this title', 'Thanks for helping personalize your recommendations.')}
               />
               <VerticalAction
                 icon={<Ionicons name="share-social-outline" size={26} color="#fff" />}
                 label="Share"
+                onPress={() => Alert.alert('Share', `Share “${title.title}” with friends from your device.`)}
               />
               <VerticalAction
                 icon={<Ionicons name="download-outline" size={26} color="#fff" />}
                 label={title.mediaType === 'tv' ? 'Download\nSeason 1' : 'Download'}
+                onPress={() => Alert.alert('Download queued', `${title.title} has been added to your downloads.`)}
               />
             </View>
           </View>
+
+          {title.mediaType === 'tv' && title.seasonsData.length > 0 && (
+            <View style={styles.episodesSection}>
+              <Text style={styles.episodesHeading}>Episodes</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.seasonTabs}
+              >
+                {title.seasonsData.map((season, index) => (
+                  <Pressable
+                    key={season.seasonNumber}
+                    onPress={() => setSelectedSeason(index)}
+                    style={[styles.seasonTab, selectedSeason === index && styles.seasonTabActive]}
+                  >
+                    <Text style={[styles.seasonTabText, selectedSeason === index && styles.seasonTabTextActive]}>
+                      {season.name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+              <View style={styles.episodeList}>
+                {title.seasonsData[selectedSeason]?.episodes.map((episode) => (
+                  <Pressable
+                    key={episode.episodeNumber}
+                    onPress={() =>
+                      router.push(
+                        `/player?id=${title.id}&type=${title.mediaType}&titleName=${encodeURIComponent(`${title.title} · S${title.seasonsData[selectedSeason].seasonNumber}:E${episode.episodeNumber}`)}&backdropUrl=${encodeURIComponent(episode.stillUrl || title.backdropUrl || '')}`,
+                      )
+                    }
+                    style={styles.episodeRow}
+                  >
+                    <Image
+                      source={artwork(episode.stillUrl || title.backdropUrl, true)}
+                      style={styles.episodeImage}
+                    />
+                    <View style={styles.episodeCopy}>
+                      <View style={styles.episodeTitleRow}>
+                        <Text style={styles.episodeTitle} numberOfLines={1}>
+                          {episode.episodeNumber}. {episode.title}
+                        </Text>
+                        <Ionicons name="play-circle-outline" size={25} color="#fff" />
+                      </View>
+                      <Text style={styles.episodeMeta}>
+                        {episode.airDate ? episode.airDate.slice(0, 4) : 'New'} · {episode.runtimeMinutes || 45}m
+                      </Text>
+                      <Text style={styles.episodeOverview} numberOfLines={2}>
+                        {episode.overview || 'Episode details coming soon.'}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
 
           {/* Stills */}
           {title.stillUrls.length > 0 && (
@@ -371,6 +449,21 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   still: { borderRadius: 4, backgroundColor: '#141414' },
+  episodesSection: { marginTop: 22, paddingTop: 18, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#333' },
+  episodesHeading: { color: '#fff', fontSize: 20, fontWeight: '700', paddingHorizontal: 16, marginBottom: 12 },
+  seasonTabs: { paddingHorizontal: 16, gap: 8, paddingBottom: 14 },
+  seasonTab: { backgroundColor: '#262626', borderRadius: 4, paddingHorizontal: 13, paddingVertical: 9 },
+  seasonTabActive: { backgroundColor: '#fff' },
+  seasonTabText: { color: '#bbb', fontSize: 13, fontWeight: '600' },
+  seasonTabTextActive: { color: '#000' },
+  episodeList: { paddingHorizontal: 16 },
+  episodeRow: { flexDirection: 'row', gap: 12, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2b2b2b' },
+  episodeImage: { width: 128, height: 72, borderRadius: 4, backgroundColor: '#171717' },
+  episodeCopy: { flex: 1, minWidth: 0 },
+  episodeTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  episodeTitle: { flex: 1, color: '#fff', fontSize: 14, fontWeight: '700' },
+  episodeMeta: { color: '#888', fontSize: 12, marginTop: 5 },
+  episodeOverview: { color: '#aaa', fontSize: 12, lineHeight: 17, marginTop: 6 },
 
   // Loading
   skeletonPreview: {

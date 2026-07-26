@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   Image,
   Pressable,
@@ -33,6 +34,7 @@ export default function PlayerScreen() {
   const insets = useSafeAreaInsets();
 
   const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [hideTimer, setHideTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
@@ -107,7 +109,11 @@ export default function PlayerScreen() {
               <Text numberOfLines={1} style={styles.titleText}>
                 {titleName ? decodeURIComponent(titleName) : 'Now Playing'}
               </Text>
-              <Pressable style={styles.iconBtn}>
+              <Pressable
+                accessibilityLabel="Cast to TV"
+                onPress={() => Alert.alert('Cast to TV', 'Choose a nearby screen to cast this title.')}
+                style={styles.iconBtn}
+              >
                 <Feather name="cast" size={19} color="#fff" />
               </Pressable>
             </View>
@@ -158,11 +164,19 @@ export default function PlayerScreen() {
 
               {/* Action row */}
               <View style={styles.actionRow}>
-                <Pressable style={styles.iconBtn}>
-                  <Feather name="volume-2" size={20} color="#fff" />
+                <Pressable
+                  accessibilityLabel={muted ? 'Unmute' : 'Mute'}
+                  onPress={() => setMuted((value) => !value)}
+                  style={styles.iconBtn}
+                >
+                  <Feather name={muted ? 'volume-x' : 'volume-2'} size={20} color="#fff" />
                 </Pressable>
                 <Text style={styles.qualityBadge}>HD</Text>
-                <Pressable style={styles.iconBtn}>
+                <Pressable
+                  accessibilityLabel="Toggle fullscreen"
+                  onPress={() => Alert.alert('Fullscreen', 'Fullscreen mode is ready for this preview.')}
+                  style={styles.iconBtn}
+                >
                   <Feather name="maximize" size={20} color="#fff" />
                 </Pressable>
               </View>
