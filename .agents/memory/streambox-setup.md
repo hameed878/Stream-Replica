@@ -22,6 +22,14 @@ The imported mobile artifact can run successfully through its configured Expo wo
 
 **How to apply:** Verify the workflow logs and use the Replit preview/Expo QR flow; do not keep recreating the artifact directory or replacing the managed mobile workflow.
 
+## Managed workflow routing
+
+Once imported artifacts are registered, use `artifacts/streambox: expo` and `artifacts/api-server: API Server`; stop the legacy `StreamBox` and `API Server` workflows to avoid port conflicts.
+
+**Why:** Both API workflows target port 8080, and the duplicate legacy process can make the managed API fail with `EADDRINUSE` even while the old preview appears healthy.
+
+**How to apply:** Restart the exact artifact-owned workflow names from `artifact.toml`, then verify `/status` for StreamBox and `/api/healthz` for the API.
+
 ## customFetch export
 
 Added `customFetch` to `lib/api-client-react/src/index.ts` exports so screens can make custom API calls (e.g. with `?type=tv` query param) without duplicating base URL logic.

@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "_YbE9W76iznpHPLYxEWtR"
+uri = "file://screenshots/streambox-home-preview.jpg"
+type = "image"
+title = "StreamBox home preview"
