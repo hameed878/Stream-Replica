@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,161 +18,308 @@ export function triggerTap() {
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 }
 
-export function Logo() {
-  const colors = useColors();
+/** The red Netflix-style "N" lettermark. */
+export function NetflixN({ size = 20 }: { size?: number }) {
   return (
-    <View style={styles.logoLockup}>
-      <View style={[styles.logoMark, { backgroundColor: colors.primary }]}>
-        <View style={[styles.logoCut, { backgroundColor: colors.background }]} />
-      </View>
-      <Text style={[styles.logoText, { color: colors.foreground }]}>STREAM<Text style={{ color: colors.primary }}>BOX</Text></Text>
+    <View style={[nStyles.wrap, { width: size, height: size * 1.4 }]}>
+      <Text style={[nStyles.letter, { fontSize: size * 0.85 }]}>N</Text>
     </View>
   );
 }
 
-export function IconButton({
+const nStyles = StyleSheet.create({
+  wrap: {
+    backgroundColor: '#E50914',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 2,
+  },
+  letter: {
+    color: '#fff',
+    fontWeight: '900',
+    lineHeight: undefined,
+    includeFontPadding: false,
+  },
+});
+
+/** "N SERIES" or "N FILM" badge shown in the detail header */
+export function NetflixTypeBadge({ type }: { type: 'tv' | 'movie' }) {
+  return (
+    <View style={badgeStyles.row}>
+      <NetflixN size={14} />
+      <Text style={badgeStyles.label}>{type === 'tv' ? 'SERIES' : 'FILM'}</Text>
+    </View>
+  );
+}
+
+const badgeStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  label: {
+    color: '#AAAAAA',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 3,
+  },
+});
+
+/** Vertical icon + label button used in hero / detail action rows */
+export function VerticalAction({
   icon,
-  onPress,
   label,
-  active = false,
+  onPress,
 }: {
-  icon: keyof typeof Feather.glyphMap;
-  onPress: () => void;
+  icon: React.ReactNode;
   label: string;
-  active?: boolean;
+  onPress?: () => void;
 }) {
-  const colors = useColors();
   return (
-    <Pressable
-      accessibilityLabel={label}
-      testID={`icon-${label.toLowerCase().replaceAll(' ', '-')}`}
-      onPress={() => { triggerTap(); onPress(); }}
-      style={({ pressed }) => [styles.iconButton, pressed && styles.pressed, active && { backgroundColor: colors.primary }]}
-    >
-      <Feather name={icon} size={19} color={active ? colors.primaryForeground : colors.foreground} />
+    <Pressable onPress={() => { triggerTap(); onPress?.(); }} style={vaStyles.btn}>
+      {icon}
+      <Text style={vaStyles.label}>{label}</Text>
     </Pressable>
   );
 }
 
-export function PosterCard({ title, width = 112 }: { title: Title; width?: number }) {
-  const colors = useColors();
-  const router = useRouter();
-  return (
-    <Pressable
-      testID={`poster-${title.id}`}
-      onPress={() => { triggerTap(); router.push(`/detail/${title.id}?type=${title.mediaType}`); }}
-      style={({ pressed }) => [styles.posterCard, { width }, pressed && styles.cardPressed]}
-    >
-      <Image source={artwork(title.posterUrl)} style={[styles.poster, { width, height: width * 1.46 }]} />
-      <Text numberOfLines={1} style={[styles.posterTitle, { color: colors.foreground }]}>{title.title}</Text>
-      <Text numberOfLines={1} style={[styles.posterMeta, { color: colors.mutedForeground }]}>
-        {title.year || '—'} <Text style={{ color: colors.primary }}>•</Text> {title.rating ? title.rating.toFixed(1) : 'NR'}
-      </Text>
-    </Pressable>
-  );
-}
+const vaStyles = StyleSheet.create({
+  btn: { alignItems: 'center', gap: 4, minWidth: 56 },
+  label: { color: '#FFFFFF', fontSize: 11, fontWeight: '500', textAlign: 'center' },
+});
 
-export function Rail({ title, items }: { title: string; items: Title[] }) {
-  const colors = useColors();
-  return (
-    <View style={styles.rail}>
-      <View style={styles.railHeading}>
-        <Text style={[styles.railTitle, { color: colors.foreground }]}>{title}</Text>
-        <Feather name="arrow-up-right" size={16} color={colors.mutedForeground} />
-      </View>
-      <View style={styles.railScroller}>
-        {items.slice(0, 10).map((item) => <PosterCard key={`${item.mediaType}-${item.id}`} title={item} />)}
-      </View>
-    </View>
-  );
-}
-
-export function PlayButton({ onPress, label = 'Play now' }: { onPress: () => void; label?: string }) {
-  const colors = useColors();
+/** White "▶ Play" button — use in hero rows */
+export function PlayButton({ onPress, label = 'Play' }: { onPress: () => void; label?: string }) {
   return (
     <Pressable
       testID="play-button"
       onPress={() => { triggerTap(); onPress(); }}
-      style={({ pressed }) => [styles.playButton, { backgroundColor: colors.primary }, pressed && styles.pressed]}
+      style={({ pressed }) => [pbStyles.btn, pressed && pbStyles.pressed]}
     >
-      <Ionicons name="play" size={16} color={colors.primaryForeground} />
-      <Text style={[styles.playText, { color: colors.primaryForeground }]}>{label}</Text>
+      <Ionicons name="play" size={16} color="#000" style={{ marginLeft: 3 }} />
+      <Text style={pbStyles.text}>{label}</Text>
     </Pressable>
   );
 }
 
-export function EmptyState({ title, body, icon = 'bookmark' }: { title: string; body: string; icon?: keyof typeof Feather.glyphMap }) {
-  const colors = useColors();
+const pbStyles = StyleSheet.create({
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 28,
+    paddingVertical: 8,
+    borderRadius: 4,
+    gap: 7,
+  },
+  pressed: { opacity: 0.8 },
+  text: { color: '#000000', fontWeight: '700', fontSize: 16 },
+});
+
+/** Full-width white "▶ Play" button for detail screen */
+export function PlayButtonFull({ onPress }: { onPress: () => void }) {
   return (
-    <View style={[styles.empty, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-      <View style={[styles.emptyIcon, { backgroundColor: colors.secondary }]}>
-        <Feather name={icon} size={22} color={colors.accent} />
+    <Pressable
+      testID="play-button-full"
+      onPress={() => { triggerTap(); onPress(); }}
+      style={({ pressed }) => [fullBtnStyles.play, pressed && { opacity: 0.8 }]}
+    >
+      <Ionicons name="play" size={18} color="#000" style={{ marginLeft: 4 }} />
+      <Text style={fullBtnStyles.playText}>Play</Text>
+    </Pressable>
+  );
+}
+
+/** Full-width dark download button for detail screen */
+export function DownloadButton({ label = 'Download S1:E1', onPress }: { label?: string; onPress?: () => void }) {
+  return (
+    <Pressable
+      onPress={() => { triggerTap(); onPress?.(); }}
+      style={({ pressed }) => [fullBtnStyles.download, pressed && { opacity: 0.8 }]}
+    >
+      <Ionicons name="download-outline" size={18} color="#fff" />
+      <Text style={fullBtnStyles.downloadText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const fullBtnStyles = StyleSheet.create({
+  play: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    height: 48,
+    borderRadius: 4,
+    gap: 8,
+    marginBottom: 10,
+  },
+  playText: { color: '#000', fontWeight: '700', fontSize: 17 },
+  download: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2A2A2A',
+    height: 48,
+    borderRadius: 4,
+    gap: 8,
+  },
+  downloadText: { color: '#fff', fontWeight: '700', fontSize: 17 },
+});
+
+/** Netflix-style filter chip (e.g. "Movies ▼", "All Categories ▼") */
+export function FilterChip({ label, onPress }: { label: string; onPress?: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={chipStyles.chip}>
+      <Text style={chipStyles.label}>{label}</Text>
+      <Ionicons name="chevron-down" size={12} color="#fff" />
+    </Pressable>
+  );
+}
+
+const chipStyles = StyleSheet.create({
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#555',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  label: { color: '#fff', fontSize: 13, fontWeight: '500' },
+});
+
+/** Poster card with optional TOP 10 rank badge */
+export function PosterCard({ title, width = 112, rank }: { title: Title; width?: number; rank?: number }) {
+  const router = useRouter();
+  const posterH = width * 1.46;
+
+  return (
+    <Pressable
+      testID={`poster-${title.id}`}
+      onPress={() => { triggerTap(); router.push(`/detail/${title.id}?type=${title.mediaType}`); }}
+      style={({ pressed }) => [pcStyles.card, { width }, pressed && pcStyles.pressed]}
+    >
+      <View style={{ width, height: posterH, position: 'relative' }}>
+        <Image source={artwork(title.posterUrl)} style={[pcStyles.poster, { width, height: posterH }]} />
+        {rank !== undefined && rank <= 10 && (
+          <View style={pcStyles.badge}>
+            <NetflixN size={12} />
+            <Text style={pcStyles.rankNum}>{rank}</Text>
+          </View>
+        )}
       </View>
-      <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{title}</Text>
-      <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>{body}</Text>
+    </Pressable>
+  );
+}
+
+const pcStyles = StyleSheet.create({
+  card: { marginRight: 6 },
+  pressed: { opacity: 0.75 },
+  poster: { borderRadius: 3, backgroundColor: '#1A1A1A' },
+  badge: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    gap: 0,
+  },
+  rankNum: {
+    color: '#FFFFFF',
+    fontSize: 42,
+    fontWeight: '900',
+    lineHeight: 44,
+    letterSpacing: -2,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+    // Outlined stroke effect
+    includeFontPadding: false,
+  },
+});
+
+/** Netflix-style horizontal rail */
+export function Rail({ title, items, showRank = false }: { title: string; items: Title[]; showRank?: boolean }) {
+  return (
+    <View style={railStyles.rail}>
+      <Text style={railStyles.title}>{title}</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={railStyles.scroller}
+      >
+        {items.slice(0, 10).map((item, i) => (
+          <PosterCard
+            key={`${item.mediaType}-${item.id}`}
+            title={item}
+            rank={showRank ? i + 1 : undefined}
+          />
+        ))}
+      </ScrollView>
     </View>
   );
 }
 
-export function LoadingRows() {
-  const colors = useColors();
+const railStyles = StyleSheet.create({
+  rail: { marginTop: 24 },
+  title: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '700',
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  scroller: { paddingHorizontal: 12, gap: 6 },
+});
+
+export function EmptyState({
+  title,
+  body,
+  icon = 'bookmark',
+}: {
+  title: string;
+  body: string;
+  icon?: keyof typeof Feather.glyphMap;
+}) {
   return (
-    <View style={styles.loadingWrap}>
-      <View style={[styles.skeletonHero, { backgroundColor: colors.card }]} />
-      {[0, 1, 2].map((row) => (
-        <View key={row} style={styles.loadingRail}>
-          <View style={[styles.skeletonLine, { backgroundColor: colors.card }]} />
-          <View style={styles.loadingPosters}>
-            {[0, 1, 2].map((item) => <View key={item} style={[styles.skeletonPoster, { backgroundColor: colors.card }]} />)}
-          </View>
-        </View>
-      ))}
+    <View style={emptyStyles.wrap}>
+      <Feather name={icon} size={28} color="#555" />
+      <Text style={emptyStyles.title}>{title}</Text>
+      <Text style={emptyStyles.body}>{body}</Text>
     </View>
   );
 }
+
+const emptyStyles = StyleSheet.create({
+  wrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
+  title: { color: '#fff', fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  body: { color: '#888', fontSize: 14, lineHeight: 20, textAlign: 'center', maxWidth: 280 },
+});
 
 export function ErrorState({ onRetry }: { onRetry: () => void }) {
-  const colors = useColors();
   return (
-    <View style={styles.errorState}>
-      <Feather name="wifi-off" size={28} color={colors.primary} />
-      <Text style={[styles.emptyTitle, { color: colors.foreground }]}>The feed missed a cue</Text>
-      <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>We could not reach the catalog right now.</Text>
-      <Pressable onPress={onRetry} style={[styles.retryButton, { borderColor: colors.border }]}>
-        <Text style={{ color: colors.foreground, fontWeight: '700' }}>Try again</Text>
+    <View style={errStyles.wrap}>
+      <Feather name="wifi-off" size={28} color="#E50914" />
+      <Text style={errStyles.title}>Could not load catalog</Text>
+      <Text style={errStyles.body}>Check your connection and try again.</Text>
+      <Pressable onPress={onRetry} style={errStyles.btn}>
+        <Text style={errStyles.btnText}>Try again</Text>
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  logoLockup: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  logoMark: { width: 26, height: 26, borderRadius: 8, transform: [{ rotate: '45deg' }], alignItems: 'center', justifyContent: 'center' },
-  logoCut: { width: 8, height: 15, borderRadius: 4, transform: [{ rotate: '-45deg' }] },
-  logoText: { fontSize: 15, letterSpacing: 2.3, fontWeight: '800' },
-  iconButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.07)', alignItems: 'center', justifyContent: 'center' },
-  pressed: { opacity: 0.68, transform: [{ scale: 0.96 }] },
-  posterCard: { marginRight: 12 },
-  cardPressed: { opacity: 0.72, transform: [{ scale: 0.97 }] },
-  poster: { borderRadius: 9, backgroundColor: '#1A1B23' },
-  posterTitle: { marginTop: 8, fontSize: 12, fontWeight: '700' },
-  posterMeta: { marginTop: 4, fontSize: 11, fontWeight: '500' },
-  rail: { marginTop: 27 },
-  railHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, paddingRight: 20 },
-  railTitle: { fontSize: 19, fontWeight: '800', letterSpacing: -0.3 },
-  railScroller: { flexDirection: 'row', paddingRight: 12 },
-  playButton: { height: 48, borderRadius: 15, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
-  playText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.1 },
-  empty: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 24, paddingVertical: 30, marginTop: 24, alignItems: 'center' },
-  emptyIcon: { width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 15 },
-  emptyTitle: { fontSize: 18, fontWeight: '800', textAlign: 'center' },
-  emptyBody: { textAlign: 'center', fontSize: 13, lineHeight: 20, marginTop: 8, maxWidth: 290 },
-  retryButton: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 20, paddingVertical: 12, marginTop: 18 },
-  loadingWrap: { padding: 16 },
-  skeletonHero: { height: 410, borderRadius: 22, opacity: 0.72 },
-  loadingRail: { marginTop: 25 },
-  skeletonLine: { width: 150, height: 19, borderRadius: 8 },
-  loadingPosters: { flexDirection: 'row', gap: 12, marginTop: 14 },
-  skeletonPoster: { width: 112, height: 164, borderRadius: 9, opacity: 0.75 },
-  errorState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 30 },
+const errStyles = StyleSheet.create({
+  wrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12, paddingTop: 100 },
+  title: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  body: { color: '#888', fontSize: 14, textAlign: 'center' },
+  btn: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#555',
+    borderRadius: 4,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  btnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });

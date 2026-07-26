@@ -1,17 +1,10 @@
 import React from 'react';
-import { Platform, StyleSheet, useColorScheme, View } from 'react-native';
-import { useColors } from '@/hooks/useColors';
-import { Feather } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
+import { Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Tabs } from 'expo-router';
 import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
-import { SymbolView } from 'expo-symbols';
 
-// IMPORTANT: iOS 26 uses NativeTabs for native tabs with liquid glass support.
-// NativeTabs intentionally does NOT use custom design tokens — liquid glass
-// is a system-level appearance provided by iOS and cannot be overridden.
-// Custom brand colors are applied only on the ClassicTabLayout path (older iOS / Android / web).
 function NativeTabLayout() {
   return (
     <NativeTabs>
@@ -19,92 +12,87 @@ function NativeTabLayout() {
         <Icon sf={{ default: 'house', selected: 'house.fill' }} />
         <Label>Home</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="search">
-        <Icon sf={{ default: 'magnifyingglass', selected: 'magnifyingglass' }} />
-        <Label>Search</Label>
+      <NativeTabs.Trigger name="games">
+        <Icon sf={{ default: 'gamecontroller', selected: 'gamecontroller.fill' }} />
+        <Label>Games</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="my-list">
-        <Icon sf={{ default: 'bookmark', selected: 'bookmark.fill' }} />
-        <Label>My List</Label>
+      <NativeTabs.Trigger name="new-hot">
+        <Icon sf={{ default: 'flame', selected: 'flame.fill' }} />
+        <Label>New & Hot</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="downloads">
+        <Icon sf={{ default: 'arrow.down.to.line', selected: 'arrow.down.to.line' }} />
+        <Label>Downloads</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
 
 function ClassicTabLayout() {
-  const colors = useColors();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const isIOS = Platform.OS === 'ios';
-  const isWeb = Platform.OS === 'web';
+  const ACTIVE = '#FFFFFF';
+  const INACTIVE = '#808080';
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.mutedForeground,
-        headerShown: true,
+        tabBarActiveTintColor: ACTIVE,
+        tabBarInactiveTintColor: INACTIVE,
+        headerShown: false,
         tabBarStyle: {
-          position: 'absolute',
-          backgroundColor: isIOS ? 'transparent' : colors.background,
-          borderTopWidth: isWeb ? 1 : 0,
-          borderTopColor: colors.border,
+          backgroundColor: '#000000',
+          borderTopWidth: 0,
           elevation: 0,
-          ...(isWeb ? { height: 84 } : {}),
+          height: Platform.OS === 'ios' ? 84 : 60,
         },
-        tabBarBackground: () =>
-          isIOS ? (
-            <BlurView
-              intensity={100}
-              tint={isDark ? 'dark' : 'light'}
-              style={StyleSheet.absoluteFill}
-            />
-          ) : isWeb ? (
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: colors.background },
-              ]}
-            />
-          ) : null,
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '500',
+          marginBottom: Platform.OS === 'ios' ? 0 : 6,
+        },
+        tabBarIconStyle: {
+          marginTop: Platform.OS === 'ios' ? 0 : 4,
+        },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="house" tintColor={color} size={24} />
-            ) : (
-              <Feather name="home" size={22} color={color} />
-            ),
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={24} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
-        name="search"
+        name="games"
         options={{
-          title: 'Search',
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="magnifyingglass" tintColor={color} size={23} />
-            ) : (
-              <Feather name="search" size={21} color={color} />
-            ),
+          title: 'Games',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'game-controller' : 'game-controller-outline'} size={24} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
-        name="my-list"
+        name="new-hot"
         options={{
-          title: 'My List',
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="bookmark" tintColor={color} size={23} />
-            ) : (
-              <Feather name="bookmark" size={21} color={color} />
-            ),
+          title: 'New & Hot',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'flame' : 'flame-outline'} size={24} color={color} />
+          ),
         }}
       />
+      <Tabs.Screen
+        name="downloads"
+        options={{
+          title: 'Downloads',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'download' : 'download-outline'} size={24} color={color} />
+          ),
+        }}
+      />
+      {/* Hidden from tab bar but still routable */}
+      <Tabs.Screen name="search" options={{ href: null }} />
+      <Tabs.Screen name="my-list" options={{ href: null }} />
     </Tabs>
   );
 }
