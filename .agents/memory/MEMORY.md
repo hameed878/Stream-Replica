@@ -1,1 +1,2 @@
 - [StreamBox setup](streambox-setup.md) — artifacts not registered after GitHub import; workflows configured manually via configureWorkflow.
+- [Streamlit preview startup](streamlit-preview.md) — use headless mode so the workflow does not block on Streamlit’s first-run email prompt.

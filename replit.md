@@ -59,16 +59,17 @@ _Populate as you build — sharp edges, "always run X before Y" rules._
 
 ## Standalone Python video player
 
-`video_player_app.py` is a separate Tkinter desktop app that fetches links
-containing “Dubbed” from `https://hindiweb.com/`, resolves the iframe URL from
-each linked page’s `.player` element, and opens a selected video in the
-default browser.
+`app.py` is the browser-previewable Streamlit app. It fetches links containing
+“Dubbed” from `https://hindiweb.com/`, resolves the iframe URL from each linked
+page’s `.player` element, and shows clickable video links that open in a new
+browser tab. `video_player_app.py` remains available as a Tkinter desktop
+version.
 
 Run it locally with:
 
 ```bash
 python -m pip install -r requirements.txt
-python video_player_app.py
+streamlit run app.py --server.port 5000
 ```
 
-This is a desktop Tkinter program and is not part of the Expo mobile app.
+For the desktop version, run `python video_player_app.py` instead.
