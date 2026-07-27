@@ -30,6 +30,14 @@ Once imported artifacts are registered, use `artifacts/streambox: expo` and `art
 
 **How to apply:** Restart the exact artifact-owned workflow names from `artifact.toml`, then verify `/status` for StreamBox and `/api/healthz` for the API.
 
+## Workspace dependency installation
+
+For package additions, target the owning workspace package with `pnpm --filter <package> add ...`; adding from the monorepo root triggers pnpm's workspace-root guard and can restart unrelated workflows.
+
+**Why:** Dependencies belong to the artifact package, and package installation may restart all configured workflows, exposing duplicate legacy processes on shared ports.
+
+**How to apply:** Install API dependencies in `@workspace/api-server`, then stop duplicate legacy workflows and restart the artifact-owned API workflow.
+
 ## customFetch export
 
 Added `customFetch` to `lib/api-client-react/src/index.ts` exports so screens can make custom API calls (e.g. with `?type=tv` query param) without duplicating base URL logic.
