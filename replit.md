@@ -56,3 +56,19 @@ _Populate as you build — sharp edges, "always run X before Y" rules._
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+
+## Standalone Python video player
+
+`video_player_app.py` is a separate Tkinter desktop app that fetches links
+containing “Dubbed” from `https://hindiweb.com/`, resolves the iframe URL from
+each linked page’s `.player` element, and opens a selected video in the
+default browser.
+
+Run it locally with:
+
+```bash
+python -m pip install -r requirements.txt
+python video_player_app.py
+```
+
+This is a desktop Tkinter program and is not part of the Expo mobile app.
