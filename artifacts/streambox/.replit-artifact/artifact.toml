@@ -7,9 +7,8 @@ router = "expo-domain"
 
 [[services]]
 name = "expo"
-ensurePreviewReachable = "/status"
 paths = [ "/" ]
-localPort = 24877
+localPort = 8099
 
 [services.development]
 run = "pnpm --filter @workspace/streambox run dev"
@@ -19,5 +18,5 @@ build = [ "pnpm", "--filter", "@workspace/streambox", "run", "build" ]
 run = [ "pnpm", "--filter", "@workspace/streambox", "run", "serve" ]
 
 [services.env]
-PORT = "24877"
+PORT = "8099"
 BASE_PATH = "/"

@@ -3,57 +3,61 @@ name: StreamBox setup
 description: How the project was set up after GitHub import and what screens exist
 ---
 
-## Workflow configuration
+## Artifact registration
 
-`listArtifacts()` returned empty after GitHub import — artifacts exist on disk but are not registered with the platform. Worked around by calling `configureWorkflow` manually:
+After GitHub import, artifacts existed on disk but were not registered with the platform (`listArtifacts()` returned empty). Fixed by calling `verifyAndReplaceArtifactToml` on `artifacts/streambox/.replit-artifact/artifact.toml` (updating localPort from 24877 → 8099 to match the running workflow). This triggered platform registration for all three artifacts.
 
-- **API Server**: `PORT=8080 pnpm --filter @workspace/api-server run dev` (port 8080, console)
-- **StreamBox**: `PORT=8099 pnpm --filter @workspace/streambox run dev` (port 8099, webview)
+**Registered artifact IDs:**
+- StreamBox: `artifacts/streambox` (mobile, previewPath `/`, port 8099)
+- API Server: `3B4_FFSkEVBkAeYMFRJ2e` (api, port 8080)
+- Canvas: `XegfDyZt7HqfW2Bb8Ghoy` (design, mockup-sandbox)
 
-**Why:** `WorkflowsRestart` with artifact-style names failed because the artifacts weren't registered. `createArtifact` would also fail since the directories already exist.
+**Why:** GitHub imports copy artifact.toml files but do not register them with the platform artifact index. `verifyAndReplaceArtifactToml` triggers registration as a side effect.
 
-**How to apply:** If workflows disappear or need to be recreated, use `configureWorkflow` with the commands above.
+## Managed workflow names (use these with WorkflowsRestart)
 
-## Preview registration
+- `artifacts/streambox: expo` — Expo/Metro bundler, port 8099
+- `artifacts/api-server: API Server` — Express API, port 8080
+- `artifacts/mockup-sandbox: Component Preview Server` — mockup sandbox
 
-The imported mobile artifact can run successfully through its configured Expo workflow even when `listArtifacts()` returns an empty list. In that state, the app is available through the Replit/Expo preview and QR flow, but automated artifact screenshot lookup may report the artifact as missing.
+**Do NOT use** the legacy `StreamBox` or `API Server` manual workflows — they conflict on the same ports.
 
-**Why:** GitHub imports may leave artifact metadata on disk without registering it with the platform artifact index.
+## Port conflict resolution
 
-**How to apply:** Verify the workflow logs and use the Replit preview/Expo QR flow; do not keep recreating the artifact directory or replacing the managed mobile workflow.
-
-## Managed workflow routing
-
-Once imported artifacts are registered, use `artifacts/streambox: expo` and `artifacts/api-server: API Server`; stop the legacy `StreamBox` and `API Server` workflows to avoid port conflicts.
-
-**Why:** Both API workflows target port 8080, and the duplicate legacy process can make the managed API fail with `EADDRINUSE` even while the old preview appears healthy.
-
-**How to apply:** Restart the exact artifact-owned workflow names from `artifact.toml`, then verify `/status` for StreamBox and `/api/healthz` for the API.
-
-## Workspace dependency installation
-
-For package additions, target the owning workspace package with `pnpm --filter <package> add ...`; adding from the monorepo root triggers pnpm's workspace-root guard and can restart unrelated workflows.
-
-**Why:** Dependencies belong to the artifact package, and package installation may restart all configured workflows, exposing duplicate legacy processes on shared ports.
-
-**How to apply:** Install API dependencies in `@workspace/api-server`, then stop duplicate legacy workflows and restart the artifact-owned API workflow.
+If managed workflows fail with EADDRINUSE, the legacy manual workflows are still holding the ports. Kill the conflicting processes:
+```bash
+lsof -ti :8080 -ti :8099 | xargs kill -9
+```
+Then restart the managed workflows.
 
 ## customFetch export
 
-Added `customFetch` to `lib/api-client-react/src/index.ts` exports so screens can make custom API calls (e.g. with `?type=tv` query param) without duplicating base URL logic.
+`customFetch` exported from `lib/api-client-react/src/index.ts` so screens can make custom API calls (e.g. with `?type=tv` query param) without duplicating base URL logic.
 
-## Screens built
+## Screens
 
-All four missing screens were added:
-- `artifacts/streambox/app/(tabs)/search.tsx` — debounced search via `/api/catalog/search`
-- `artifacts/streambox/app/(tabs)/my-list.tsx` — AsyncStorage watchlist display
-- `artifacts/streambox/app/detail/[id].tsx` — full title detail with stills, cast, play/save
-- `artifacts/streambox/app/player.tsx` — full-screen cinematic player UI
+- `artifacts/streambox/app/(tabs)/index.tsx` — home with 18 genre rails (30 items each)
+- `artifacts/streambox/app/(tabs)/search.tsx` — debounced search
+- `artifacts/streambox/app/(tabs)/my-list.tsx` — AsyncStorage watchlist
+- `artifacts/streambox/app/detail/[id].tsx` — title detail with cast, episodes, play/save
+- `artifacts/streambox/app/player.tsx` — WebView player (vidsrc.to embed, 4 source fallbacks)
 
-## Navigation pattern
+## Player navigation params
 
-PosterCard and featured hero navigate with `?type=${mediaType}` query param so the detail screen can request the correct TMDB media type. Player receives `titleName` and `backdropUrl` as encoded query params.
+Player receives: `id`, `type`, `season`, `episode`, `titleName`, `episodeLabel` (all query params, URL-encoded). For TV episodes, season/episode are passed explicitly. Player builds vidsrc.to embed URL client-side.
 
-## Search endpoint
+## Video stream sources (player.tsx)
 
-Added `GET /api/catalog/search?q=...` to `artifacts/api-server/src/routes/catalog.ts` using TMDB `/search/multi`. 5-minute in-memory cache.
+4 fallback sources built into player, selectable via UI:
+1. vidsrc.to — `https://vidsrc.to/embed/movie/{id}` or `/tv/{id}/{s}/{e}`
+2. vidsrc.me — `https://vidsrc.me/embed/movie?tmdb={id}`
+3. vidsrc.xyz — `https://vidsrc.xyz/embed/movie/{id}`
+4. multiembed.mov — `https://multiembed.mov/?video_id={id}&tmdb=1`
+
+## Stream API endpoint
+
+`GET /api/catalog/stream/:id?type=movie|tv&season=1&episode=1` — returns `{ embedUrls, primaryUrl }` for all 4 sources.
+
+## Catalog home (catalog.ts)
+
+18 genre rails, 30 items each, using `getRailLight` (single TMDB call per rail, no per-item detail fetches). Full details only fetched on the title detail screen.
