@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { load } from "cheerio";
 
 type MediaType = "movie" | "tv";
 type TmdbListItem = {
@@ -57,6 +58,171 @@ const TMDB_BASE = "https://api.themoviedb.org/3";
 const IMAGE_BASE = "https://image.tmdb.org/t/p";
 const cache = new Map<string, { expiresAt: number; value: unknown }>();
 const MAX_DISCOVER_PAGE = 500;
+const HINDIWEB_HOME = "https://hindiweb.com/";
+const HINDIWEB_TIMEOUT_MS = 8_000;
+const HINDIWEB_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/131.0 Safari/537.36";
+
+class HindiWebResolverError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: 404 | 502 = 502,
+  ) {
+    super(message);
+    this.name = "HindiWebResolverError";
+  }
+}
+
+function normalizedText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function titleMatches(candidate: string, requested: string): boolean {
+  const candidateWords = new Set(
+    candidate
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((word) => word && word !== "dubbed"),
+  );
+  const requestedWords = requested
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  return (
+    requestedWords.length > 0 &&
+    requestedWords.every((word) => candidateWords.has(word))
+  );
+}
+
+async function resolveHindiWebVideo(requestedTitle: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HINDIWEB_TIMEOUT_MS);
+
+  try {
+    const homeResponse = await fetch(HINDIWEB_HOME, {
+      signal: controller.signal,
+      headers: { "User-Agent": HINDIWEB_USER_AGENT },
+    });
+
+    const finalHost = new URL(homeResponse.url).hostname;
+    if (
+      !homeResponse.ok ||
+      !["hindiweb.com", "www.hindiweb.com"].includes(finalHost)
+    ) {
+      throw new HindiWebResolverError(
+        "HindiWeb is unavailable or redirected to another site.",
+      );
+    }
+
+    const homepageHtml = await homeResponse.text();
+    const $ = load(homepageHtml);
+    const candidates: Array<{ title: string; url: string }> = [];
+
+    $("a[href]").each((_index, element) => {
+      const title = normalizedText($(element).text());
+      const rawHref = $(element).attr("href");
+      if (!rawHref) return;
+
+      const searchable = `${title} ${rawHref}`.toLowerCase();
+      if (!searchable.includes("dubbed")) return;
+
+      try {
+        const url = new URL(rawHref, homeResponse.url).toString();
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+          candidates.push({ title: title || requestedTitle, url });
+        }
+      } catch {
+        // Ignore malformed links from the upstream page.
+      }
+    });
+
+    const matchingCandidate =
+      candidates.find((candidate) =>
+        titleMatches(candidate.title, requestedTitle),
+      ) ?? candidates.find((candidate) =>
+        titleMatches(candidate.url, requestedTitle),
+      );
+
+    if (!matchingCandidate) {
+      throw new HindiWebResolverError(
+        `No HindiWeb Dubbed entry matched "${requestedTitle}".`,
+        404,
+      );
+    }
+
+    const detailResponse = await fetch(matchingCandidate.url, {
+      signal: controller.signal,
+      headers: { "User-Agent": HINDIWEB_USER_AGENT },
+    });
+    if (!detailResponse.ok) {
+      throw new HindiWebResolverError(
+        `HindiWeb detail page returned HTTP ${detailResponse.status}.`,
+      );
+    }
+
+    const detailHtml = await detailResponse.text();
+    const detail$ = load(detailHtml);
+    const player = detail$("div.player, .player").first();
+    if (player.length === 0) {
+      throw new HindiWebResolverError(
+        "The HindiWeb entry has no .player container.",
+        404,
+      );
+    }
+
+    let iframeUrl: string | undefined;
+    player.find("iframe, embed, video, source").each((_index, element) => {
+      if (iframeUrl) return;
+      for (const attribute of ["src", "data-src", "data-url", "data-embed"]) {
+        const value = detail$(element).attr(attribute)?.trim();
+        if (value) {
+          iframeUrl = new URL(value, detailResponse.url).toString();
+          break;
+        }
+      }
+    });
+
+    if (!iframeUrl) {
+      for (const attribute of ["data-src", "data-url", "data-embed"]) {
+        const value = player.attr(attribute)?.trim();
+        if (value) {
+          iframeUrl = new URL(value, detailResponse.url).toString();
+          break;
+        }
+      }
+    }
+
+    if (!iframeUrl) {
+      throw new HindiWebResolverError(
+        "The HindiWeb .player container has no video iframe URL.",
+        404,
+      );
+    }
+
+    return {
+      source: "HindiWeb",
+      title: matchingCandidate.title,
+      primaryUrl: iframeUrl,
+      detailUrl: matchingCandidate.url,
+    };
+  } catch (error) {
+    if (error instanceof HindiWebResolverError) throw error;
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new HindiWebResolverError(
+        "HindiWeb took too long to return a video stream.",
+      );
+    }
+    throw new HindiWebResolverError(
+      "HindiWeb could not be reached right now.",
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 function getApiKey(): string {
   const key = process.env.TMDB_API_KEY;
@@ -403,40 +569,30 @@ router.get("/catalog/title/:id", async (req, res) => {
 });
 
 /**
- * GET /catalog/stream/:id?type=movie|tv&season=1&episode=1
- * Returns embed URLs for the given TMDB title from multiple free streaming sources.
+ * GET /catalog/stream/:id?type=movie|tv&title=...
+ * Resolves the matching HindiWeb Dubbed entry and returns its .player iframe.
  */
 router.get("/catalog/stream/:id", async (req, res) => {
   const id = req.params.id;
   const mediaType = req.query.type === "tv" ? "tv" : "movie";
-  const season = typeof req.query.season === "string" ? req.query.season : "1";
-  const episode = typeof req.query.episode === "string" ? req.query.episode : "1";
+  const requestedTitle =
+    typeof req.query.title === "string" ? req.query.title.trim() : "";
 
-  let embedUrls: string[];
-  if (mediaType === "tv") {
-    embedUrls = [
-      `https://vidsrc.to/embed/tv/${id}/${season}/${episode}`,
-      `https://vidsrc.me/embed/tv?tmdb=${id}&season=${season}&episode=${episode}`,
-      `https://vidsrc.xyz/embed/tv/${id}?s=${season}&e=${episode}`,
-      `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${season}&e=${episode}`,
-    ];
-  } else {
-    embedUrls = [
-      `https://vidsrc.to/embed/movie/${id}`,
-      `https://vidsrc.me/embed/movie?tmdb=${id}`,
-      `https://vidsrc.xyz/embed/movie/${id}`,
-      `https://multiembed.mov/?video_id=${id}&tmdb=1`,
-    ];
+  if (!requestedTitle) {
+    return res.status(400).json({ message: "A title is required." });
   }
 
-  return res.json({
-    id,
-    mediaType,
-    season: mediaType === "tv" ? season : null,
-    episode: mediaType === "tv" ? episode : null,
-    embedUrls,
-    primaryUrl: embedUrls[0],
-  });
+  try {
+    const stream = await resolveHindiWebVideo(requestedTitle);
+    return res.json({ id, mediaType, ...stream });
+  } catch (error) {
+    const statusCode =
+      error instanceof HindiWebResolverError ? error.statusCode : 502;
+    const message =
+      error instanceof Error ? error.message : "HindiWeb stream unavailable.";
+    req.log.warn({ err: error, title: requestedTitle }, "HindiWeb stream lookup failed");
+    return res.status(statusCode).json({ message });
+  }
 });
 
 export default router;
