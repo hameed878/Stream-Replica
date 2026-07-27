@@ -143,3 +143,58 @@ export const GetCatalogTitleResponse = zod.object({
 })
 
 
+/**
+ * @summary Browse paginated movies or series
+ */
+export const discoverCatalogQueryPageDefault = 1;
+export const discoverCatalogQueryPageMax = 500;
+
+
+
+export const DiscoverCatalogQueryParams = zod.object({
+  "type": zod.enum(['movie', 'tv']),
+  "page": zod.coerce.number().min(1).max(discoverCatalogQueryPageMax).default(discoverCatalogQueryPageDefault)
+})
+
+export const DiscoverCatalogResponse = zod.object({
+  "page": zod.number(),
+  "totalPages": zod.number(),
+  "totalResults": zod.number(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "mediaType": zod.enum(['movie', 'tv']),
+  "title": zod.string(),
+  "originalTitle": zod.string(),
+  "overview": zod.string(),
+  "releaseDate": zod.string(),
+  "year": zod.string(),
+  "genres": zod.array(zod.string()),
+  "cast": zod.array(zod.string()),
+  "posterUrl": zod.string(),
+  "backdropUrl": zod.string(),
+  "stillUrls": zod.array(zod.string()),
+  "rating": zod.number(),
+  "runtimeMinutes": zod.number(),
+  "seasons": zod.number(),
+  "seasonsData": zod.array(zod.object({
+  "seasonNumber": zod.number(),
+  "name": zod.string(),
+  "overview": zod.string(),
+  "episodeCount": zod.number(),
+  "airDate": zod.string(),
+  "posterUrl": zod.string(),
+  "episodes": zod.array(zod.object({
+  "episodeNumber": zod.number(),
+  "title": zod.string(),
+  "overview": zod.string(),
+  "airDate": zod.string(),
+  "runtimeMinutes": zod.number(),
+  "stillUrl": zod.string()
+}))
+})),
+  "imdbId": zod.string()
+}))
+})
+
+

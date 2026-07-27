@@ -7,7 +7,11 @@
  */
 
 export * from './catalogHome';
+export * from './catalogPage';
+export * from './catalogPageMediaType';
 export * from './catalogRail';
+export * from './discoverCatalogParams';
+export * from './discoverCatalogType';
 export * from './episode';
 export * from './getCatalogTitleParams';
 export * from './getCatalogTitleType';

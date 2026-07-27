@@ -17,6 +17,8 @@ import type {
 
 import type {
   CatalogHome,
+  CatalogPage,
+  DiscoverCatalogParams,
   GetCatalogTitleParams,
   HealthStatus,
   Title
@@ -281,6 +283,90 @@ export function useGetCatalogTitle<TData = Awaited<ReturnType<typeof getCatalogT
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetCatalogTitleQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDiscoverCatalogUrl = (params: DiscoverCatalogParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/catalog/discover?${stringifiedParams}` : `/api/catalog/discover`
+}
+
+/**
+ * @summary Browse paginated movies or series
+ */
+export const discoverCatalog = async (params: DiscoverCatalogParams, options?: RequestInit): Promise<CatalogPage> => {
+
+  return customFetch<CatalogPage>(getDiscoverCatalogUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDiscoverCatalogQueryKey = (params?: DiscoverCatalogParams,) => {
+    return [
+    `/api/catalog/discover`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getDiscoverCatalogQueryOptions = <TData = Awaited<ReturnType<typeof discoverCatalog>>, TError = ErrorType<void>>(params: DiscoverCatalogParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof discoverCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDiscoverCatalogQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof discoverCatalog>>> = ({ signal }) => discoverCatalog(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof discoverCatalog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type DiscoverCatalogQueryResult = NonNullable<Awaited<ReturnType<typeof discoverCatalog>>>
+export type DiscoverCatalogQueryError = ErrorType<void>
+
+
+/**
+ * @summary Browse paginated movies or series
+ */
+
+export function useDiscoverCatalog<TData = Awaited<ReturnType<typeof discoverCatalog>>, TError = ErrorType<void>>(
+ params: DiscoverCatalogParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof discoverCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getDiscoverCatalogQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -64,6 +64,35 @@ paths:
                 $ref: "#/components/schemas/Title"
         "404":
           description: Title not found
+  /catalog/discover:
+    get:
+      operationId: discoverCatalog
+      tags: [catalog]
+      summary: Browse paginated movies or series
+      parameters:
+        - in: query
+          name: type
+          required: true
+          schema:
+            type: string
+            enum: [movie, tv]
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 1
+      responses:
+        "200":
+          description: A page of catalog titles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogPage"
+        "400":
+          description: Invalid catalog browse parameters
 components:
   schemas:
     HealthStatus:
@@ -213,4 +242,26 @@ components:
         - featured
         - rails
         - syncedAt
+    CatalogPage:
+      type: object
+      properties:
+        page:
+          type: integer
+        totalPages:
+          type: integer
+        totalResults:
+          type: integer
+        mediaType:
+          type: string
+          enum: [movie, tv]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Title"
+      required:
+        - page
+        - totalPages
+        - totalResults
+        - mediaType
+        - items
 

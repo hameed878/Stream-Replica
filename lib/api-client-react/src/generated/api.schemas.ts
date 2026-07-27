@@ -67,6 +67,22 @@ export interface CatalogHome {
   syncedAt: string;
 }
 
+export type CatalogPageMediaType = typeof CatalogPageMediaType[keyof typeof CatalogPageMediaType];
+
+
+export const CatalogPageMediaType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export interface CatalogPage {
+  page: number;
+  totalPages: number;
+  totalResults: number;
+  mediaType: CatalogPageMediaType;
+  items: Title[];
+}
+
 export type GetCatalogTitleParams = {
 type?: GetCatalogTitleType;
 };
@@ -75,6 +91,23 @@ export type GetCatalogTitleType = typeof GetCatalogTitleType[keyof typeof GetCat
 
 
 export const GetCatalogTitleType = {
+  movie: 'movie',
+  tv: 'tv',
+} as const;
+
+export type DiscoverCatalogParams = {
+type: DiscoverCatalogType;
+/**
+ * @minimum 1
+ * @maximum 500
+ */
+page?: number;
+};
+
+export type DiscoverCatalogType = typeof DiscoverCatalogType[keyof typeof DiscoverCatalogType];
+
+
+export const DiscoverCatalogType = {
   movie: 'movie',
   tv: 'tv',
 } as const;

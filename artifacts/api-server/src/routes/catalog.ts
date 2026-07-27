@@ -56,6 +56,7 @@ const router: IRouter = Router();
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const IMAGE_BASE = "https://image.tmdb.org/t/p";
 const cache = new Map<string, { expiresAt: number; value: unknown }>();
+const MAX_DISCOVER_PAGE = 500;
 
 function getApiKey(): string {
   const key = process.env.TMDB_API_KEY;
@@ -198,6 +199,64 @@ router.get("/catalog/home", async (_req, res) => {
   } catch (error) {
     _req.log.error({ err: error }, "catalog sync failed");
     return res.status(502).json({ message: "Catalog sync is temporarily unavailable." });
+  }
+});
+
+router.get("/catalog/discover", async (req, res) => {
+  const mediaType = req.query.type === "tv" ? "tv" : req.query.type === "movie" ? "movie" : null;
+  const requestedPage = Number(req.query.page ?? 1);
+
+  if (!mediaType) {
+    return res.status(400).json({
+      message: "Query parameter type must be movie or tv.",
+    });
+  }
+
+  if (!Number.isInteger(requestedPage) || requestedPage < 1 || requestedPage > MAX_DISCOVER_PAGE) {
+    return res.status(400).json({
+      message: `Query parameter page must be an integer between 1 and ${MAX_DISCOVER_PAGE}.`,
+    });
+  }
+
+  const cacheKey = `discover:${mediaType}:${requestedPage}`;
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return res.json(cached.value);
+
+  try {
+    const response = await tmdb<{
+      page: number;
+      total_pages: number;
+      total_results: number;
+      results: TmdbListItem[];
+    }>(`/discover/${mediaType}`, {
+      page: String(requestedPage),
+      sort_by: "popularity.desc",
+      include_adult: "false",
+      include_video: "false",
+    });
+
+    const items = await Promise.all(
+      response.results.map((item) =>
+        getDetails({
+          ...item,
+          media_type: mediaType,
+        }),
+      ),
+    );
+    const totalPages = Math.min(response.total_pages, MAX_DISCOVER_PAGE);
+    const value = {
+      page: response.page,
+      totalPages,
+      totalResults: Math.min(response.total_results, totalPages * 20),
+      mediaType,
+      items,
+    };
+
+    cache.set(cacheKey, { value, expiresAt: Date.now() + 10 * 60 * 1000 });
+    return res.json(value);
+  } catch (error) {
+    req.log.error({ err: error, mediaType, page: requestedPage }, "catalog discovery failed");
+    return res.status(502).json({ message: "Catalog discovery is temporarily unavailable." });
   }
 });
 
