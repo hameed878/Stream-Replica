@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -11,8 +11,10 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import WebView, { type WebViewNavigation } from 'react-native-webview';
+import WebView, { type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
+import { useVideoPlayer, VideoView } from 'expo-video';
 
+// ─── Palette ────────────────────────────────────────────────────────────────
 const palette = {
   ink: '#090A0E',
   panel: '#15161C',
@@ -25,6 +27,7 @@ const palette = {
   white: '#F9F7F4',
 };
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 function decodeParam(value: string | string[] | undefined, fallback: string) {
   const raw = Array.isArray(value) ? value[0] : value;
   if (!raw) return fallback;
@@ -56,6 +59,141 @@ function buildEmbedUrl(
 
 const SOURCE_LABELS = ['VidSrc', 'VidSrc.me', 'VidSrc.xyz', 'MultiEmbed'];
 
+// How long to wait for URL extraction before falling back to WebView
+const EXTRACTION_TIMEOUT_MS = 15_000;
+
+// ─── JS injected into the hidden WebView ─────────────────────────────────────
+// Intercepts XHR, fetch, and <video src> to grab the first .m3u8 / .mp4 URL,
+// then postMessages it back to React Native.
+const INJECT_JS = `
+(function() {
+  var sent = false;
+
+  function send(url) {
+    if (sent) return;
+    if (!url || typeof url !== 'string') return;
+    var lower = url.toLowerCase().split('?')[0];
+    if (!lower.endsWith('.m3u8') && !lower.endsWith('.mp4')) return;
+    // Skip tiny/empty segments — real stream URLs tend to be longer
+    if (url.length < 20) return;
+    sent = true;
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'VIDEO_URL', url: url }));
+  }
+
+  // --- Intercept XMLHttpRequest ---
+  var OrigXHR = window.XMLHttpRequest;
+  function PatchedXHR() {
+    var xhr = new OrigXHR();
+    var origOpen = xhr.open.bind(xhr);
+    xhr.open = function(method, url) {
+      send(url);
+      return origOpen.apply(this, arguments);
+    };
+    return xhr;
+  }
+  PatchedXHR.prototype = OrigXHR.prototype;
+  window.XMLHttpRequest = PatchedXHR;
+
+  // --- Intercept fetch ---
+  var origFetch = window.fetch;
+  window.fetch = function(input, init) {
+    var url = typeof input === 'string' ? input : (input && input.url);
+    send(url);
+    return origFetch.apply(this, arguments);
+  };
+
+  // --- MutationObserver: watch <video src> ---
+  function checkNode(node) {
+    if (!node) return;
+    if (node.tagName === 'VIDEO') {
+      if (node.src) send(node.src);
+      if (node.currentSrc) send(node.currentSrc);
+      // Also watch for src changes via attribute
+      var obs = new MutationObserver(function(muts) {
+        muts.forEach(function(m) {
+          if (m.attributeName === 'src' && node.src) send(node.src);
+        });
+      });
+      obs.observe(node, { attributes: true });
+    }
+    if (node.querySelectorAll) {
+      node.querySelectorAll('video').forEach(function(v) {
+        if (v.src) send(v.src);
+        if (v.currentSrc) send(v.currentSrc);
+      });
+    }
+  }
+
+  var domObs = new MutationObserver(function(muts) {
+    muts.forEach(function(m) {
+      m.addedNodes.forEach(function(n) { checkNode(n); });
+    });
+    // Also re-scan all videos on every mutation (some players swap src)
+    document.querySelectorAll('video').forEach(function(v) {
+      if (v.src) send(v.src);
+      if (v.currentSrc) send(v.currentSrc);
+    });
+  });
+
+  domObs.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['src'],
+  });
+
+  // Initial scan in case video already exists
+  document.querySelectorAll('video').forEach(function(v) {
+    if (v.src) send(v.src);
+    if (v.currentSrc) send(v.currentSrc);
+  });
+
+  true; // required by injectedJavaScriptBeforeContentLoaded
+})();
+`;
+
+// ─── Player modes ─────────────────────────────────────────────────────────────
+type Mode =
+  | 'extracting'   // hidden WebView is sniffing for the video URL
+  | 'native'       // expo-video is playing the extracted URL
+  | 'webview'      // fallback: show the WebView embed directly
+  | 'error';       // all sources exhausted
+
+// ─── Native video sub-component ──────────────────────────────────────────────
+function NativePlayer({
+  videoUrl,
+  onError,
+}: {
+  videoUrl: string;
+  onError: () => void;
+}) {
+  const player = useVideoPlayer(videoUrl, (p) => {
+    p.loop = false;
+    p.play();
+  });
+
+  useEffect(() => {
+    const sub = player.addListener('statusChange', (status) => {
+      if (status.status === 'error') {
+        onError();
+      }
+    });
+    return () => sub.remove();
+  }, [player, onError]);
+
+  return (
+    <VideoView
+      style={StyleSheet.absoluteFillObject}
+      player={player}
+      allowsFullscreen
+      allowsPictureInPicture
+      contentFit="contain"
+      nativeControls
+    />
+  );
+}
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
 export default function PlayerScreen() {
   const {
     id = '',
@@ -81,29 +219,115 @@ export default function PlayerScreen() {
   const epLabel = decodeParam(episodeLabel, '');
 
   const [sourceIndex, setSourceIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [mode, setMode] = useState<Mode>('extracting');
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [showSourcePicker, setShowSourcePicker] = useState(false);
+  const [webviewLoading, setWebviewLoading] = useState(true);
+  const [webviewError, setWebviewError] = useState(false);
+
+  // Key incremented to force WebView remount on source switch
   const webviewKey = useRef(0);
+  // Extraction timeout handle
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const embedUrl = buildEmbedUrl(id, type as string, season as string, episode as string, sourceIndex);
+  const embedUrl = buildEmbedUrl(
+    id,
+    type as string,
+    season as string,
+    episode as string,
+    sourceIndex,
+  );
 
-  function switchSource(index: number) {
-    setSourceIndex(index);
-    setLoading(true);
-    setError(false);
-    setShowSourcePicker(false);
+  // ── Start/reset extraction for a given source ──
+  const startExtraction = useCallback((index: number) => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     webviewKey.current += 1;
+    setSourceIndex(index);
+    setMode('extracting');
+    setVideoUrl(null);
+    setWebviewLoading(true);
+    setWebviewError(false);
+    setShowSourcePicker(false);
+
+    timeoutRef.current = setTimeout(() => {
+      // Timed out waiting for a URL → fall back to showing WebView directly
+      setMode('webview');
+    }, EXTRACTION_TIMEOUT_MS);
+  }, []);
+
+  // Kick off extraction on mount
+  useEffect(() => {
+    if (id) startExtraction(0);
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [id, startExtraction]);
+
+  // ── Handle message from hidden WebView ──
+  const onMessage = useCallback((event: WebViewMessageEvent) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'VIDEO_URL' && data.url) {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        setVideoUrl(data.url);
+        setMode('native');
+      }
+    } catch {
+      // ignore malformed messages
+    }
+  }, []);
+
+  // ── Native player failed (e.g. 403) → fall back to WebView ──
+  const onNativeError = useCallback(() => {
+    setMode('webview');
+  }, []);
+
+  // ── Switch source manually ──
+  function switchSource(index: number) {
+    startExtraction(index);
   }
+
+  // ── Determine label for loading overlay ──
+  const loadingLabel = mode === 'extracting'
+    ? 'Resolving stream…'
+    : 'Loading stream…';
+
+  const showLoading =
+    mode === 'extracting' ||
+    (mode === 'webview' && webviewLoading && !webviewError);
 
   return (
     <View style={styles.screen}>
       <StatusBar hidden />
 
-      {/* ── WebView player ── */}
-      {id ? (
+      {/* ── Hidden extraction WebView ── */}
+      {mode === 'extracting' && id ? (
         <WebView
-          key={webviewKey.current}
+          key={`extract-${webviewKey.current}`}
+          source={{ uri: embedUrl }}
+          style={styles.hidden}
+          javaScriptEnabled
+          domStorageEnabled
+          mediaPlaybackRequiresUserAction={false}
+          allowsInlineMediaPlayback
+          injectedJavaScript={INJECT_JS}
+          onMessage={onMessage}
+          userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+          // Suppress errors — we'll time out instead
+          onError={() => {}}
+          onHttpError={() => {}}
+        />
+      ) : null}
+
+      {/* ── Native expo-video player ── */}
+      {mode === 'native' && videoUrl ? (
+        <NativePlayer videoUrl={videoUrl} onError={onNativeError} />
+      ) : null}
+
+      {/* ── Fallback WebView (visible embed) ── */}
+      {mode === 'webview' && id ? (
+        <WebView
+          key={`webview-${webviewKey.current}`}
           source={{ uri: embedUrl }}
           style={styles.webview}
           allowsFullscreenVideo
@@ -111,27 +335,35 @@ export default function PlayerScreen() {
           domStorageEnabled
           mediaPlaybackRequiresUserAction={false}
           allowsInlineMediaPlayback
-          onLoadStart={() => { setLoading(true); setError(false); }}
-          onLoad={() => setLoading(false)}
-          onError={() => { setLoading(false); setError(true); }}
-          onHttpError={() => { setLoading(false); setError(true); }}
+          onLoadStart={() => { setWebviewLoading(true); setWebviewError(false); }}
+          onLoad={() => setWebviewLoading(false)}
+          onError={() => { setWebviewLoading(false); setWebviewError(true); }}
+          onHttpError={() => { setWebviewLoading(false); setWebviewError(true); }}
           onNavigationStateChange={(_nav: WebViewNavigation) => {}}
           userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
         />
-      ) : (
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: palette.ink }]} />
-      )}
+      ) : null}
 
-      {/* ── Loading indicator ── */}
-      {loading && (
+      {/* ── Dark background when no video content yet ── */}
+      {(mode === 'extracting' || (!id)) ? (
+        <View style={[StyleSheet.absoluteFillObject, styles.bg]} pointerEvents="none" />
+      ) : null}
+
+      {/* ── Loading overlay ── */}
+      {showLoading && (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <ActivityIndicator size="large" color={palette.accent} />
-          <Text style={styles.loadingText}>Loading stream…</Text>
+          <Text style={styles.loadingText}>{loadingLabel}</Text>
+          {mode === 'extracting' && (
+            <Text style={styles.loadingSubText}>
+              Extracting native stream from source…
+            </Text>
+          )}
         </View>
       )}
 
-      {/* ── Error state ── */}
-      {error && !loading && (
+      {/* ── WebView error state ── */}
+      {mode === 'webview' && webviewError && !webviewLoading && (
         <View style={styles.errorOverlay}>
           <Ionicons name="alert-circle-outline" size={48} color={palette.accent} />
           <Text style={styles.errorTitle}>Stream Unavailable</Text>
@@ -166,6 +398,9 @@ export default function PlayerScreen() {
           <Text style={styles.brandLine}>STREAMBOX</Text>
           <Text numberOfLines={1} style={styles.titleText}>{title}</Text>
           {epLabel ? <Text style={styles.epText}>{epLabel}</Text> : null}
+          {mode === 'native' && (
+            <Text style={styles.nativeBadge}>▶ Native Player</Text>
+          )}
         </View>
 
         <View style={styles.topRight}>
@@ -204,10 +439,20 @@ export default function PlayerScreen() {
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: palette.ink,
+  },
+  bg: {
+    backgroundColor: palette.ink,
+  },
+  hidden: {
+    width: 1,
+    height: 1,
+    opacity: 0,
+    position: 'absolute',
   },
   webview: {
     flex: 1,
@@ -224,6 +469,11 @@ const styles = StyleSheet.create({
     color: palette.textMuted,
     fontSize: 14,
     fontWeight: '600',
+  },
+  loadingSubText: {
+    color: 'rgba(177,174,178,0.55)',
+    fontSize: 12,
+    fontWeight: '500',
   },
   errorOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -296,13 +546,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     marginHorizontal: 10,
+    gap: 2,
   },
   brandLine: {
     color: palette.accent,
     fontSize: 8,
     fontWeight: '800',
     letterSpacing: 1.6,
-    marginBottom: 3,
   },
   titleText: {
     color: palette.text,
@@ -313,7 +563,12 @@ const styles = StyleSheet.create({
     color: palette.textMuted,
     fontSize: 11,
     fontWeight: '500',
-    marginTop: 2,
+  },
+  nativeBadge: {
+    color: '#4ade80',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
   topRight: {
     flexDirection: 'row',
