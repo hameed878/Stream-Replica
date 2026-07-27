@@ -132,6 +132,32 @@ function normalize(
   };
 }
 
+/** Light normalize — uses only list-level data, no extra API call per item. */
+function normalizeLight(item: TmdbListItem & { media_type?: MediaType }) {
+  const mediaType = item.media_type ?? "movie";
+  const title = item.title ?? item.name ?? "Untitled";
+  const releaseDate = item.release_date ?? item.first_air_date ?? "";
+  return {
+    id: item.id,
+    mediaType,
+    title,
+    originalTitle: item.original_title ?? item.original_name ?? title,
+    overview: item.overview ?? "No synopsis available.",
+    releaseDate,
+    year: releaseDate.slice(0, 4),
+    genres: [] as string[],
+    cast: [] as string[],
+    posterUrl: image(item.poster_path, "w500"),
+    backdropUrl: image(item.backdrop_path, "w1280"),
+    stillUrls: [] as string[],
+    rating: Number((item.vote_average ?? 0).toFixed(1)),
+    runtimeMinutes: 0,
+    seasons: 0,
+    seasonsData: [] as never[],
+    imdbId: "",
+  };
+}
+
 async function getDetails(item: TmdbListItem, includeEpisodes = false) {
   const mediaType = item.media_type ?? "movie";
   const details = await tmdb<TmdbDetails>(`/${mediaType}/${item.id}`, {
@@ -152,6 +178,7 @@ async function getDetails(item: TmdbListItem, includeEpisodes = false) {
   return normalize({ ...item, media_type: mediaType }, details, seasonDetails);
 }
 
+/** Fetch a rail with full details — use for featured/small rails only. */
 async function getRail(path: string, mediaType: MediaType, railSize = 8) {
   const response = await tmdb<{ results: TmdbListItem[] }>(path);
   const items = response.results
@@ -161,36 +188,120 @@ async function getRail(path: string, mediaType: MediaType, railSize = 8) {
   return Promise.all(items.map((item) => getDetails(item)));
 }
 
+/** Fetch a large rail using list-level data only — single TMDB call, fast. */
+async function getRailLight(
+  path: string,
+  mediaType: MediaType,
+  params: Record<string, string> = {},
+  railSize = 20,
+) {
+  const response = await tmdb<{ results: TmdbListItem[] }>(path, params);
+  return response.results
+    .filter((item) => item.poster_path && item.backdrop_path)
+    .slice(0, railSize)
+    .map((item) => normalizeLight({ ...item, media_type: mediaType }));
+}
+
+/** Fetch two pages of a discover endpoint and combine into a large rail. */
+async function getDiscoverRailLight(
+  mediaType: MediaType,
+  genreId: string,
+  railSize = 30,
+) {
+  const params = {
+    sort_by: "popularity.desc",
+    include_adult: "false",
+    include_video: "false",
+    with_genres: genreId,
+  };
+  const [page1, page2] = await Promise.all([
+    tmdb<{ results: TmdbListItem[] }>(`/discover/${mediaType}`, { ...params, page: "1" }),
+    tmdb<{ results: TmdbListItem[] }>(`/discover/${mediaType}`, { ...params, page: "2" }),
+  ]);
+  const combined = [...page1.results, ...page2.results];
+  return combined
+    .filter((item) => item.poster_path && item.backdrop_path)
+    .slice(0, railSize)
+    .map((item) => normalizeLight({ ...item, media_type: mediaType }));
+}
+
 router.get("/catalog/home", async (_req, res) => {
   const cached = cache.get("home");
   if (cached && cached.expiresAt > Date.now()) return res.json(cached.value);
   try {
-    const [trending, popularMovies, popularSeries, newMovies] = await Promise.all([
+    // Fetch featured item with full details, plus all rails in parallel.
+    const [
+      trending,
+      popularMoviesRail,
+      popularSeriesRail,
+      newMoviesRail,
+      actionMovies,
+      comedyMovies,
+      horrorMovies,
+      scifiMovies,
+      crimeMovies,
+      animationMovies,
+      topRatedMovies,
+      topRatedSeries,
+      actionSeries,
+      dramaMovies,
+      documentaryMovies,
+      thrillerMovies,
+      romanceMovies,
+      familyMovies,
+    ] = await Promise.all([
       tmdb<{ results: TmdbListItem[] }>("/trending/all/week"),
-      getRail("/movie/popular", "movie"),
-      getRail("/tv/popular", "tv"),
-      getRail("/movie/now_playing", "movie"),
+      getRailLight("/movie/popular", "movie", {}, 30),
+      getRailLight("/tv/popular", "tv", {}, 30),
+      getRailLight("/movie/now_playing", "movie", {}, 30),
+      getDiscoverRailLight("movie", "28", 30),          // Action
+      getDiscoverRailLight("movie", "35", 30),          // Comedy
+      getDiscoverRailLight("movie", "27", 30),          // Horror
+      getDiscoverRailLight("movie", "878", 30),         // Science Fiction
+      getDiscoverRailLight("movie", "80", 30),          // Crime
+      getDiscoverRailLight("movie", "16", 30),          // Animation
+      getRailLight("/movie/top_rated", "movie", {}, 30),
+      getRailLight("/tv/top_rated", "tv", {}, 30),
+      getDiscoverRailLight("tv", "10759", 30),          // Action & Adventure TV
+      getDiscoverRailLight("movie", "18", 30),          // Drama
+      getDiscoverRailLight("movie", "99", 30),          // Documentary
+      getDiscoverRailLight("movie", "53", 30),          // Thriller
+      getDiscoverRailLight("movie", "10749", 30),       // Romance
+      getDiscoverRailLight("movie", "10751", 30),       // Family
     ]);
+
     const featuredItem = trending.results.find((item) => item.backdrop_path && item.poster_path);
     const featured = featuredItem
-      ? await getDetails({
-          ...featuredItem,
-          media_type: featuredItem.media_type ?? "movie",
-        })
-      : popularMovies[0];
+      ? await getDetails({ ...featuredItem, media_type: featuredItem.media_type ?? "movie" })
+      : await getDetails({ ...popularMoviesRail[0], media_type: "movie" } as TmdbListItem);
     if (!featured) throw new Error("Catalog returned no featured title.");
+
+    const trendingRail = trending.results
+      .filter((item) => item.poster_path && item.backdrop_path)
+      .slice(0, 30)
+      .map((item) => normalizeLight({ ...item, media_type: item.media_type ?? "movie" }));
+
     const value = {
       featured,
       rails: [
-        { title: "Popular on StreamBox", items: popularMovies },
-        { title: "Trending Now", items: await Promise.all(
-          trending.results
-            .filter((item) => item.poster_path && item.backdrop_path)
-            .slice(0, 8)
-            .map((item) => getDetails({ ...item, media_type: item.media_type ?? "movie" })),
-        ) },
-        { title: "Series Worth Watching", items: popularSeries },
-        { title: "New Releases", items: newMovies },
+        { title: "Popular on StreamBox", items: popularMoviesRail },
+        { title: "Trending Now", items: trendingRail },
+        { title: "Popular Series", items: popularSeriesRail },
+        { title: "New Releases", items: newMoviesRail },
+        { title: "Action & Adventure", items: actionMovies },
+        { title: "Comedy", items: comedyMovies },
+        { title: "Crime", items: crimeMovies },
+        { title: "Thriller", items: thrillerMovies },
+        { title: "Horror", items: horrorMovies },
+        { title: "Science Fiction", items: scifiMovies },
+        { title: "Drama", items: dramaMovies },
+        { title: "Romance", items: romanceMovies },
+        { title: "Animation", items: animationMovies },
+        { title: "Family", items: familyMovies },
+        { title: "Documentary", items: documentaryMovies },
+        { title: "Top Rated Movies", items: topRatedMovies },
+        { title: "Top Rated Series", items: topRatedSeries },
+        { title: "Action Series", items: actionSeries },
       ],
       syncedAt: new Date().toISOString(),
     };
@@ -235,14 +346,10 @@ router.get("/catalog/discover", async (req, res) => {
       include_video: "false",
     });
 
-    const items = await Promise.all(
-      response.results.map((item) =>
-        getDetails({
-          ...item,
-          media_type: mediaType,
-        }),
-      ),
-    );
+    const items = response.results
+      .filter((item) => item.poster_path && item.backdrop_path)
+      .map((item) => normalizeLight({ ...item, media_type: mediaType }));
+
     const totalPages = Math.min(response.total_pages, MAX_DISCOVER_PAGE);
     const value = {
       page: response.page,
@@ -270,9 +377,9 @@ router.get("/catalog/search", async (req, res) => {
     const response = await tmdb<{ results: (TmdbListItem & { media_type?: string })[] }>("/search/multi", { query: q });
     const items = response.results
       .filter((item) => (item.media_type === "movie" || item.media_type === "tv") && item.poster_path)
-      .slice(0, 20)
+      .slice(0, 30)
       .map((item) => ({ ...item, media_type: item.media_type as MediaType }));
-    const value = await Promise.all(items.map((item) => getDetails(item)));
+    const value = items.map((item) => normalizeLight(item));
     cache.set(cacheKey, { value, expiresAt: Date.now() + 5 * 60 * 1000 });
     return res.json(value);
   } catch (error) {
@@ -293,6 +400,43 @@ router.get("/catalog/title/:id", async (req, res) => {
     req.log.error({ err: error }, "title lookup failed");
     return res.status(404).json({ message: "Title not found." });
   }
+});
+
+/**
+ * GET /catalog/stream/:id?type=movie|tv&season=1&episode=1
+ * Returns embed URLs for the given TMDB title from multiple free streaming sources.
+ */
+router.get("/catalog/stream/:id", async (req, res) => {
+  const id = req.params.id;
+  const mediaType = req.query.type === "tv" ? "tv" : "movie";
+  const season = typeof req.query.season === "string" ? req.query.season : "1";
+  const episode = typeof req.query.episode === "string" ? req.query.episode : "1";
+
+  let embedUrls: string[];
+  if (mediaType === "tv") {
+    embedUrls = [
+      `https://vidsrc.to/embed/tv/${id}/${season}/${episode}`,
+      `https://vidsrc.me/embed/tv?tmdb=${id}&season=${season}&episode=${episode}`,
+      `https://vidsrc.xyz/embed/tv/${id}?s=${season}&e=${episode}`,
+      `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${season}&e=${episode}`,
+    ];
+  } else {
+    embedUrls = [
+      `https://vidsrc.to/embed/movie/${id}`,
+      `https://vidsrc.me/embed/movie?tmdb=${id}`,
+      `https://vidsrc.xyz/embed/movie/${id}`,
+      `https://multiembed.mov/?video_id=${id}&tmdb=1`,
+    ];
+  }
+
+  return res.json({
+    id,
+    mediaType,
+    season: mediaType === "tv" ? season : null,
+    episode: mediaType === "tv" ? episode : null,
+    embedUrls,
+    primaryUrl: embedUrls[0],
+  });
 });
 
 export default router;

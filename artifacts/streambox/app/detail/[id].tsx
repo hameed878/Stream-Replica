@@ -96,7 +96,7 @@ export default function DetailScreen() {
                 accessibilityLabel="Play preview"
                 onPress={() =>
                   router.push(
-                    `/player?id=${title.id}&type=${title.mediaType}&titleName=${encodeURIComponent(title.title)}&backdropUrl=${encodeURIComponent(title.backdropUrl || '')}`,
+                    `/player?id=${title.id}&type=${title.mediaType}&season=1&episode=1&titleName=${encodeURIComponent(title.title)}`,
                   )
                 }
               >
@@ -171,7 +171,7 @@ export default function DetailScreen() {
             <PlayButtonFull
               onPress={() =>
                 router.push(
-                  `/player?id=${title.id}&type=${title.mediaType}&titleName=${encodeURIComponent(title.title)}&backdropUrl=${encodeURIComponent(title.backdropUrl || '')}`,
+                  `/player?id=${title.id}&type=${title.mediaType}&season=1&episode=1&titleName=${encodeURIComponent(title.title)}`,
                 )
               }
             />
@@ -265,7 +265,7 @@ export default function DetailScreen() {
                     key={episode.episodeNumber}
                     onPress={() =>
                       router.push(
-                        `/player?id=${title.id}&type=${title.mediaType}&titleName=${encodeURIComponent(`${title.title} · S${title.seasonsData[selectedSeason].seasonNumber}:E${episode.episodeNumber}`)}&backdropUrl=${encodeURIComponent(episode.stillUrl || title.backdropUrl || '')}`,
+                        `/player?id=${title.id}&type=${title.mediaType}&season=${title.seasonsData[selectedSeason].seasonNumber}&episode=${episode.episodeNumber}&titleName=${encodeURIComponent(title.title)}&episodeLabel=${encodeURIComponent(`S${title.seasonsData[selectedSeason].seasonNumber}:E${episode.episodeNumber} · ${episode.title}`)}`,
                       )
                     }
                     style={styles.episodeRow}

@@ -182,7 +182,7 @@ export default function HomeScreen() {
               <PlayButton
                 onPress={() =>
                   router.push(
-                    `/player?id=${featured.id}&type=${featured.mediaType}&titleName=${encodeURIComponent(featured.title)}&backdropUrl=${encodeURIComponent(featured.backdropUrl || '')}`,
+                    `/player?id=${featured.id}&type=${featured.mediaType}&season=1&episode=1&titleName=${encodeURIComponent(featured.title)}`,
                   )
                 }
               />

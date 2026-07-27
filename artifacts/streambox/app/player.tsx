@@ -1,408 +1,203 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
-  Alert,
-  Image,
+  ActivityIndicator,
   Platform,
   Pressable,
   StatusBar,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const TOTAL_MINUTES = 112;
+import WebView, { type WebViewNavigation } from 'react-native-webview';
 
 const palette = {
   ink: '#090A0E',
   panel: '#15161C',
-  panelRaised: '#202127',
   text: '#F4F0EC',
   textMuted: '#B1AEB2',
-  textFaint: '#79777E',
-  line: 'rgba(244,240,236,0.16)',
   softLine: 'rgba(244,240,236,0.09)',
-  glass: 'rgba(14,15,20,0.72)',
-  glassStrong: 'rgba(12,13,17,0.9)',
+  glass: 'rgba(9,10,14,0.80)',
+  glassStrong: 'rgba(9,10,14,0.95)',
   accent: '#EC4056',
-  accentDeep: '#9E253A',
   white: '#F9F7F4',
 };
-
-function fmt(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.floor(minutes % 60);
-  return hours > 0 ? `${hours}:${String(mins).padStart(2, '0')}` : `${mins}:00`;
-}
 
 function decodeParam(value: string | string[] | undefined, fallback: string) {
   const raw = Array.isArray(value) ? value[0] : value;
   if (!raw) return fallback;
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    return raw;
-  }
+  try { return decodeURIComponent(raw); } catch { return raw; }
 }
 
-type IconButtonProps = {
-  accessibilityLabel: string;
-  onPress: () => void;
-  children: React.ReactNode;
-  variant?: 'quiet' | 'solid';
-  testID?: string;
-};
-
-function IconButton({
-  accessibilityLabel,
-  onPress,
-  children,
-  variant = 'quiet',
-  testID,
-}: IconButtonProps) {
-  return (
-    <Pressable
-      accessibilityLabel={accessibilityLabel}
-      accessibilityRole="button"
-      onPress={onPress}
-      testID={testID}
-      style={({ pressed }) => [
-        styles.iconButton,
-        variant === 'solid' && styles.iconButtonSolid,
-        pressed && styles.iconButtonPressed,
-      ]}
-    >
-      {children}
-    </Pressable>
-  );
+function buildEmbedUrl(
+  id: string,
+  type: string,
+  season: string,
+  episode: string,
+  sourceIndex: number,
+): string {
+  const sources = type === 'tv'
+    ? [
+        `https://vidsrc.to/embed/tv/${id}/${season}/${episode}`,
+        `https://vidsrc.me/embed/tv?tmdb=${id}&season=${season}&episode=${episode}`,
+        `https://vidsrc.xyz/embed/tv/${id}?s=${season}&e=${episode}`,
+        `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${season}&e=${episode}`,
+      ]
+    : [
+        `https://vidsrc.to/embed/movie/${id}`,
+        `https://vidsrc.me/embed/movie?tmdb=${id}`,
+        `https://vidsrc.xyz/embed/movie/${id}`,
+        `https://multiembed.mov/?video_id=${id}&tmdb=1`,
+      ];
+  return sources[Math.min(sourceIndex, sources.length - 1)];
 }
 
-function UtilityButton({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: keyof typeof Feather.glyphMap;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityLabel={label}
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.utilityButton, pressed && styles.utilityButtonPressed]}
-    >
-      <Feather name={icon} size={18} color={palette.text} />
-      <Text style={styles.utilityLabel}>{label}</Text>
-    </Pressable>
-  );
-}
+const SOURCE_LABELS = ['VidSrc', 'VidSrc.me', 'VidSrc.xyz', 'MultiEmbed'];
 
 export default function PlayerScreen() {
-  const { titleName, backdropUrl, type } = useLocalSearchParams<{
+  const {
+    id = '',
+    type = 'movie',
+    season = '1',
+    episode = '1',
+    titleName,
+    episodeLabel,
+  } = useLocalSearchParams<{
     id?: string;
     type?: string;
+    season?: string;
+    episode?: string;
     titleName?: string;
-    backdropUrl?: string;
+    episodeLabel?: string;
   }>();
+
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const topInset = Math.max(insets.top, Platform.OS === 'web' ? 60 : 0);
 
   const title = decodeParam(titleName, 'Now Playing');
-  const backdrop = decodeParam(backdropUrl, '');
-  const isLandscape = width > height;
-  const topInset = Math.max(insets.top, Platform.OS === 'web' ? 67 : 0);
-  const bottomInset = Math.max(insets.bottom, Platform.OS === 'web' ? 34 : 0);
-  const isMovie = type?.toLowerCase() === 'movie';
+  const epLabel = decodeParam(episodeLabel, '');
 
-  const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [controlsVisible, setControlsVisible] = useState(true);
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [showSourcePicker, setShowSourcePicker] = useState(false);
+  const webviewKey = useRef(0);
 
-  useEffect(() => {
-    if (!playing) return;
-    const interval = setInterval(() => {
-      setProgress((current) => {
-        if (current >= 1) {
-          setPlaying(false);
-          return 1;
-        }
-        return current + 1 / (TOTAL_MINUTES * 60 * 10);
-      });
-    }, 100);
-    return () => clearInterval(interval);
-  }, [playing]);
+  const embedUrl = buildEmbedUrl(id, type as string, season as string, episode as string, sourceIndex);
 
-  useEffect(() => {
-    if (hideTimer.current) clearTimeout(hideTimer.current);
-    if (playing) {
-      hideTimer.current = setTimeout(() => setControlsVisible(false), 3800);
-    } else {
-      setControlsVisible(true);
-    }
-    return () => {
-      if (hideTimer.current) clearTimeout(hideTimer.current);
-    };
-  }, [playing]);
-
-  function showControls() {
-    setControlsVisible(true);
-    if (hideTimer.current) clearTimeout(hideTimer.current);
-    if (playing) {
-      hideTimer.current = setTimeout(() => setControlsVisible(false), 3800);
-    }
+  function switchSource(index: number) {
+    setSourceIndex(index);
+    setLoading(true);
+    setError(false);
+    setShowSourcePicker(false);
+    webviewKey.current += 1;
   }
-
-  function togglePlayback() {
-    setPlaying((current) => !current);
-    setControlsVisible(true);
-  }
-
-  const elapsed = Math.round(progress * TOTAL_MINUTES);
-  const remaining = TOTAL_MINUTES - elapsed;
-
-  const portraitMediaWidth = Math.max(280, Math.min(width - 32, 760));
-  const landscapeMediaHeight = Math.max(
-    160,
-    Math.min(height - topInset - bottomInset - 174, (width - 132) * 0.5625),
-  );
-  const mediaWidth = isLandscape
-    ? Math.min(980, landscapeMediaHeight * (16 / 9))
-    : portraitMediaWidth;
-  const mediaHeight = isLandscape ? landscapeMediaHeight : portraitMediaWidth * 0.5625;
 
   return (
     <View style={styles.screen}>
       <StatusBar hidden />
 
-      {backdrop ? (
-        <Image
-          source={{ uri: backdrop }}
-          style={StyleSheet.absoluteFillObject}
-          resizeMode="cover"
+      {/* ── WebView player ── */}
+      {id ? (
+        <WebView
+          key={webviewKey.current}
+          source={{ uri: embedUrl }}
+          style={styles.webview}
+          allowsFullscreenVideo
+          javaScriptEnabled
+          domStorageEnabled
+          mediaPlaybackRequiresUserAction={false}
+          allowsInlineMediaPlayback
+          onLoadStart={() => { setLoading(true); setError(false); }}
+          onLoad={() => setLoading(false)}
+          onError={() => { setLoading(false); setError(true); }}
+          onHttpError={() => { setLoading(false); setError(true); }}
+          onNavigationStateChange={(_nav: WebViewNavigation) => {}}
+          userAgent="Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
         />
       ) : (
-        <View style={[StyleSheet.absoluteFillObject, styles.backdropFallback]} />
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: palette.ink }]} />
       )}
-      <LinearGradient
-        colors={['rgba(7,8,11,0.88)', 'rgba(9,10,14,0.18)', 'rgba(7,8,11,0.98)']}
-        locations={[0, 0.46, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-      <LinearGradient
-        colors={['rgba(236,64,86,0.10)', 'transparent', 'rgba(7,8,11,0.28)']}
-        locations={[0, 0.28, 1]}
-        style={StyleSheet.absoluteFill}
-      />
 
-      <Pressable style={StyleSheet.absoluteFill} onPress={showControls} />
+      {/* ── Loading indicator ── */}
+      {loading && (
+        <View style={styles.loadingOverlay} pointerEvents="none">
+          <ActivityIndicator size="large" color={palette.accent} />
+          <Text style={styles.loadingText}>Loading stream…</Text>
+        </View>
+      )}
 
-      {controlsVisible && (
-        <View style={styles.controls}>
-          <View style={[styles.topBar, { paddingTop: topInset + 10 }]}>
-            <IconButton
-              accessibilityLabel="Close player"
-              onPress={() => router.back()}
-              testID="player-close"
-            >
-              <Feather name="chevron-down" size={23} color={palette.text} />
-            </IconButton>
-
-            <View style={styles.heading}>
-              <Text style={styles.brandLine}>STREAMBOX  /  PREVIEW</Text>
-              <Text numberOfLines={1} style={styles.topTitle}>
-                {title}
-              </Text>
-            </View>
-
-            <View style={styles.topActions}>
-              <IconButton
-                accessibilityLabel="Cast to TV"
-                onPress={() => Alert.alert('Cast to TV', 'Choose a nearby screen to cast this title.')}
+      {/* ── Error state ── */}
+      {error && !loading && (
+        <View style={styles.errorOverlay}>
+          <Ionicons name="alert-circle-outline" size={48} color={palette.accent} />
+          <Text style={styles.errorTitle}>Stream Unavailable</Text>
+          <Text style={styles.errorSub}>Try a different source below.</Text>
+          <View style={styles.errorSources}>
+            {SOURCE_LABELS.map((label, i) => (
+              <Pressable
+                key={label}
+                onPress={() => switchSource(i)}
+                style={[styles.sourceBtn, i === sourceIndex && styles.sourceBtnActive]}
               >
-                <Feather name="cast" size={18} color={palette.text} />
-              </IconButton>
-              <IconButton
-                accessibilityLabel="More player options"
-                onPress={() => Alert.alert('Player options', 'Playback preferences are ready for this preview.')}
-              >
-                <Feather name="more-horizontal" size={20} color={palette.text} />
-              </IconButton>
-            </View>
+                <Text style={[styles.sourceBtnText, i === sourceIndex && styles.sourceBtnTextActive]}>
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
           </View>
+        </View>
+      )}
 
-          <View
-            style={[
-              styles.stage,
-              isLandscape ? styles.stageLandscape : styles.stagePortrait,
-              { paddingBottom: isLandscape ? 6 : 0 },
-            ]}
+      {/* ── Top bar ── */}
+      <View style={[styles.topBar, { paddingTop: topInset + 6 }]} pointerEvents="box-none">
+        <Pressable
+          accessibilityLabel="Close player"
+          onPress={() => router.back()}
+          style={styles.iconBtn}
+        >
+          <Ionicons name="chevron-down" size={26} color={palette.white} />
+        </Pressable>
+
+        <View style={styles.titleBlock}>
+          <Text style={styles.brandLine}>STREAMBOX</Text>
+          <Text numberOfLines={1} style={styles.titleText}>{title}</Text>
+          {epLabel ? <Text style={styles.epText}>{epLabel}</Text> : null}
+        </View>
+
+        <View style={styles.topRight}>
+          {/* Source picker toggle */}
+          <Pressable
+            accessibilityLabel="Switch source"
+            onPress={() => setShowSourcePicker((v) => !v)}
+            style={styles.iconBtn}
           >
-            <View style={styles.mediaColumn}>
-              <View
-                style={[
-                  styles.mediaFrame,
-                  { width: mediaWidth, height: mediaHeight },
-                ]}
-              >
-                {backdrop ? (
-                  <Image
-                    source={{ uri: backdrop }}
-                    style={StyleSheet.absoluteFillObject}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={[StyleSheet.absoluteFillObject, styles.mediaFallback]} />
-                )}
-                <LinearGradient
-                  colors={['rgba(8,9,13,0.25)', 'transparent', 'rgba(8,9,13,0.82)']}
-                  locations={[0, 0.45, 1]}
-                  style={StyleSheet.absoluteFill}
-                />
-                <View style={styles.mediaTopMeta}>
-                  <View style={styles.livePill}>
-                    <View style={styles.liveDot} />
-                    <Text style={styles.liveText}>PLAYBACK PREVIEW</Text>
-                  </View>
-                  <Text style={styles.mediaFormat}>HD</Text>
-                </View>
-                <View style={styles.centerControls}>
-                  <Pressable
-                    accessibilityLabel="Skip back 10 seconds"
-                    accessibilityRole="button"
-                    onPress={() => {
-                      setProgress((current) => Math.max(0, current - 0.07));
-                      showControls();
-                    }}
-                    style={styles.skipButton}
-                  >
-                    <Feather name="rotate-ccw" size={28} color={palette.text} />
-                    <Text style={styles.skipValue}>10</Text>
-                  </Pressable>
-                  <IconButton
-                    accessibilityLabel={playing ? 'Pause' : 'Play'}
-                    onPress={togglePlayback}
-                    variant="solid"
-                    testID="player-play"
-                  >
-                    <Ionicons
-                      name={playing ? 'pause' : 'play'}
-                      size={31}
-                      color={palette.ink}
-                      style={{ marginLeft: playing ? 0 : 3 }}
-                    />
-                  </IconButton>
-                  <Pressable
-                    accessibilityLabel="Skip forward 10 seconds"
-                    accessibilityRole="button"
-                    onPress={() => {
-                      setProgress((current) => Math.min(1, current + 0.07));
-                      showControls();
-                    }}
-                    style={styles.skipButton}
-                  >
-                    <Feather name="rotate-cw" size={28} color={palette.text} />
-                    <Text style={styles.skipValue}>10</Text>
-                  </Pressable>
-                </View>
-                <View style={styles.mediaBottomCopy}>
-                  <Text style={styles.mediaEyebrow}>{isMovie ? 'FEATURE PRESENTATION' : 'CONTINUE WATCHING'}</Text>
-                  <Text numberOfLines={1} style={styles.mediaTitle}>
-                    {title}
-                  </Text>
-                </View>
-              </View>
+            <Feather name="layers" size={19} color={palette.white} />
+          </Pressable>
+        </View>
+      </View>
 
-              {!isLandscape && (
-                <View style={styles.metadataBlock}>
-                  <View style={styles.metadataCopy}>
-                    <Text style={styles.eyebrow}>NOW PLAYING</Text>
-                    <Text numberOfLines={2} style={styles.metadataTitle}>
-                      {title}
-                    </Text>
-                    <Text style={styles.metadataSubline}>
-                      {isMovie ? 'Feature presentation' : 'Season 1  ·  Episode 04'}  /  {fmt(remaining)} left
-                    </Text>
-                  </View>
-                  <Pressable
-                    accessibilityLabel="Open episode list"
-                    accessibilityRole="button"
-                    onPress={() => Alert.alert('Episodes', 'Episode selection is ready for this preview.')}
-                    style={styles.episodeButton}
-                  >
-                    <Feather name="list" size={17} color={palette.text} />
-                  </Pressable>
-                </View>
+      {/* ── Source picker ── */}
+      {showSourcePicker && (
+        <View style={[styles.sourcePicker, { top: topInset + 66 }]}>
+          <Text style={styles.sourcePickerTitle}>Select Source</Text>
+          {SOURCE_LABELS.map((label, i) => (
+            <Pressable
+              key={label}
+              onPress={() => switchSource(i)}
+              style={[styles.sourcePickerRow, i === sourceIndex && styles.sourcePickerRowActive]}
+            >
+              <Text style={[styles.sourcePickerText, i === sourceIndex && styles.sourcePickerTextActive]}>
+                {label}
+              </Text>
+              {i === sourceIndex && (
+                <Ionicons name="checkmark" size={16} color={palette.accent} />
               )}
-            </View>
-
-            {isLandscape && (
-              <View style={styles.landscapeRail}>
-                <UtilityButton
-                  icon="message-square"
-                  label="Subtitles"
-                  onPress={() => Alert.alert('Subtitles', 'Subtitles are available in this preview.')}
-                />
-                <UtilityButton
-                  icon="list"
-                  label="Episodes"
-                  onPress={() => Alert.alert('Episodes', 'Episode selection is ready for this preview.')}
-                />
-                <UtilityButton
-                  icon="settings"
-                  label="Settings"
-                  onPress={() => Alert.alert('Playback settings', 'Playback preferences are ready for this preview.')}
-                />
-              </View>
-            )}
-          </View>
-
-          <View style={[styles.bottomPanel, { paddingBottom: bottomInset + 14 }]}>
-            <View style={styles.progressLabels}>
-              <Text style={styles.timeText}>{fmt(elapsed)}</Text>
-              <Text style={styles.remainingText}>-{fmt(remaining)}</Text>
-            </View>
-            <View style={styles.trackOuter}>
-              <View style={[styles.trackFill, { width: `${progress * 100}%` }]} />
-              <View
-                style={[
-                  styles.thumb,
-                  { left: `${Math.min(progress * 100, 98)}%` },
-                ]}
-              />
-            </View>
-            <View style={styles.actionRow}>
-              <View style={styles.actionCluster}>
-                <IconButton
-                  accessibilityLabel={muted ? 'Unmute' : 'Mute'}
-                  onPress={() => {
-                    setMuted((value) => !value);
-                    showControls();
-                  }}
-                >
-                  <Feather name={muted ? 'volume-x' : 'volume-2'} size={19} color={palette.text} />
-                </IconButton>
-                <Text style={styles.audioLabel}>{muted ? 'MUTED' : 'ENGLISH 5.1'}</Text>
-              </View>
-              <View style={styles.bottomRightActions}>
-                <Text style={styles.qualityBadge}>HD</Text>
-                <IconButton
-                  accessibilityLabel="Toggle fullscreen"
-                  onPress={() => Alert.alert('Fullscreen', 'Fullscreen mode is ready for this preview.')}
-                >
-                  <Feather name="maximize-2" size={19} color={palette.text} />
-                </IconButton>
-              </View>
-            </View>
-          </View>
+            </Pressable>
+          ))}
         </View>
       )}
     </View>
@@ -414,324 +209,159 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: palette.ink,
   },
-  controls: {
+  webview: {
     flex: 1,
-    justifyContent: 'space-between',
-  },
-  backdropFallback: {
     backgroundColor: palette.ink,
   },
-  mediaFallback: {
-    backgroundColor: palette.panel,
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: palette.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+  },
+  loadingText: {
+    color: palette.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  errorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: palette.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  errorTitle: {
+    color: palette.text,
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  errorSub: {
+    color: palette.textMuted,
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  errorSources: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  sourceBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(244,240,236,0.2)',
+    backgroundColor: 'rgba(20,21,27,0.8)',
+  },
+  sourceBtnActive: {
+    borderColor: palette.accent,
+    backgroundColor: 'rgba(236,64,86,0.15)',
+  },
+  sourceBtnText: {
+    color: palette.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  sourceBtnTextActive: {
+    color: palette.accent,
   },
   topBar: {
-    minHeight: 72,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  heading: {
-    flex: 1,
-    minWidth: 0,
-    marginHorizontal: 12,
-  },
-  brandLine: {
-    color: palette.accent,
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1.5,
-    marginBottom: 5,
-  },
-  topTitle: {
-    color: palette.text,
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.1,
-  },
-  topActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  iconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(20,21,27,0.66)',
-    borderWidth: 1,
-    borderColor: palette.softLine,
-  },
-  iconButtonSolid: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: palette.white,
-    borderColor: palette.white,
-  },
-  iconButtonPressed: {
-    opacity: 0.68,
-    transform: [{ scale: 0.95 }],
-  },
-  stage: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  stagePortrait: {
-    alignItems: 'center',
-  },
-  stageLandscape: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-  },
-  mediaColumn: {
-    alignItems: 'center',
-  },
-  mediaFrame: {
-    position: 'relative',
-    overflow: 'hidden',
-    borderRadius: 24,
-    backgroundColor: palette.panel,
-    borderWidth: 1,
-    borderColor: 'rgba(244,240,236,0.18)',
-    shadowColor: palette.ink,
-    shadowOpacity: 0.5,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 8,
-  },
-  mediaTopMeta: {
-    position: 'absolute',
-    top: 15,
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  livePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(9,10,14,0.66)',
-    borderWidth: 1,
-    borderColor: 'rgba(244,240,236,0.16)',
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: palette.accent,
-    marginRight: 6,
-  },
-  liveText: {
-    color: palette.text,
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-  },
-  mediaFormat: {
-    color: palette.text,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(244,240,236,0.35)',
-    backgroundColor: 'rgba(9,10,14,0.48)',
-  },
-  centerControls: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  skipButton: {
-    width: 58,
-    height: 58,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 18,
-  },
-  skipValue: {
-    position: 'absolute',
-    color: palette.text,
-    fontSize: 9,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  mediaBottomCopy: {
-    position: 'absolute',
-    left: 17,
-    right: 17,
-    bottom: 15,
-  },
-  mediaEyebrow: {
-    color: 'rgba(244,240,236,0.74)',
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1.3,
-    marginBottom: 4,
-  },
-  mediaTitle: {
-    color: palette.text,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  metadataBlock: {
-    width: '100%',
-    maxWidth: 760,
-    paddingHorizontal: 4,
-    paddingTop: 15,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    backgroundColor: palette.glassStrong,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: palette.softLine,
+    zIndex: 20,
   },
-  metadataCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  eyebrow: {
-    color: palette.accent,
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 1.4,
-    marginBottom: 5,
-  },
-  metadataTitle: {
-    color: palette.text,
-    fontSize: 19,
-    fontWeight: '700',
-    letterSpacing: -0.2,
-  },
-  metadataSubline: {
-    color: palette.textMuted,
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 5,
-  },
-  episodeButton: {
+  iconBtn: {
     width: 42,
     height: 42,
-    marginLeft: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(20,21,27,0.72)',
-    borderWidth: 1,
-    borderColor: palette.softLine,
+    backgroundColor: 'rgba(20,21,27,0.6)',
   },
-  landscapeRail: {
-    width: 58,
-    marginLeft: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+  titleBlock: {
+    flex: 1,
+    minWidth: 0,
+    marginHorizontal: 10,
   },
-  utilityButton: {
-    width: 56,
-    minHeight: 65,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 4,
-    borderRadius: 15,
-    backgroundColor: 'rgba(20,21,27,0.66)',
-    borderWidth: 1,
-    borderColor: palette.softLine,
-  },
-  utilityButtonPressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.96 }],
-  },
-  utilityLabel: {
-    color: palette.textMuted,
+  brandLine: {
+    color: palette.accent,
     fontSize: 8,
-    fontWeight: '700',
-    marginTop: 6,
-    letterSpacing: 0.2,
-  },
-  bottomPanel: {
-    paddingHorizontal: 20,
-  },
-  progressLabels: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 9,
-  },
-  timeText: {
-    color: palette.text,
-    fontSize: 11,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  remainingText: {
-    color: palette.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-  },
-  trackOuter: {
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: 'rgba(244,240,236,0.21)',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  trackFill: {
-    height: '100%',
-    borderRadius: 3,
-    backgroundColor: palette.accent,
-  },
-  thumb: {
-    position: 'absolute',
-    width: 15,
-    height: 15,
-    borderRadius: 8,
-    marginLeft: -7,
-    top: -5,
-    backgroundColor: palette.white,
-    borderWidth: 3,
-    borderColor: palette.accent,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  actionCluster: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  audioLabel: {
-    color: palette.textMuted,
-    fontSize: 9,
     fontWeight: '800',
-    letterSpacing: 1.05,
-    marginLeft: 10,
+    letterSpacing: 1.6,
+    marginBottom: 3,
   },
-  bottomRightActions: {
+  titleText: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  epText: {
+    color: palette.textMuted,
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  topRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
-  qualityBadge: {
-    color: palette.text,
+  sourcePicker: {
+    position: 'absolute',
+    right: 14,
+    width: 200,
+    backgroundColor: palette.panel,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(244,240,236,0.12)',
+    paddingVertical: 8,
+    zIndex: 30,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 10,
+  },
+  sourcePickerTitle: {
+    color: palette.textMuted,
     fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 1,
-    borderWidth: 1,
-    borderColor: 'rgba(244,240,236,0.38)',
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginRight: 10,
+    letterSpacing: 1.2,
+    paddingHorizontal: 14,
+    paddingBottom: 6,
+    paddingTop: 2,
+  },
+  sourcePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  sourcePickerRowActive: {
+    backgroundColor: 'rgba(236,64,86,0.1)',
+  },
+  sourcePickerText: {
+    color: palette.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  sourcePickerTextActive: {
+    color: palette.text,
+    fontWeight: '700',
   },
 });
